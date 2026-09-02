@@ -10,8 +10,23 @@ import os
 import tomllib
 import uuid
 from datetime import UTC, datetime
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
+
+
+def package_version(package: dict[str, Any]) -> str | None:
+    """Resolve lockfile versions, including uv's unversioned editable root entry."""
+    locked_version = package.get("version")
+    if isinstance(locked_version, str):
+        return locked_version
+    package_name = package.get("name")
+    if not isinstance(package_name, str):
+        return None
+    try:
+        return version(package_name)
+    except PackageNotFoundError:
+        return None
 
 
 def main() -> int:
@@ -26,17 +41,18 @@ def main() -> int:
     relationships = []
     for index, package in enumerate(lock.get("package", []), start=1):
         spdx_id = f"SPDXRef-Package-{index}"
-        packages.append(
-            {
-                "SPDXID": spdx_id,
-                "name": package["name"],
-                "versionInfo": package["version"],
-                "downloadLocation": "NOASSERTION",
-                "filesAnalyzed": False,
-                "licenseConcluded": "NOASSERTION",
-                "licenseDeclared": "NOASSERTION",
-            }
-        )
+        entry = {
+            "SPDXID": spdx_id,
+            "name": package["name"],
+            "downloadLocation": "NOASSERTION",
+            "filesAnalyzed": False,
+            "licenseConcluded": "NOASSERTION",
+            "licenseDeclared": "NOASSERTION",
+        }
+        resolved_version = package_version(package)
+        if resolved_version is not None:
+            entry["versionInfo"] = resolved_version
+        packages.append(entry)
         relationships.append(
             {
                 "spdxElementId": "SPDXRef-DOCUMENT",

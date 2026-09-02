@@ -48,7 +48,7 @@ security = [
 [dependency-groups]
 dev = [
   "build>=1.2",
-  "django-stubs>=5.2,<5.3",
+  "django-stubs>=5.2,<6.2",
   "djangorestframework-stubs>=3.16,<4",
   "hatchling>=1.27",
   "hypothesis>=6.130",

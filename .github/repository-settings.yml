@@ -2,11 +2,13 @@ repository:
   description: Explicit, consumer-owned reliability and protocol building blocks for Python services
   topics: [python, django, reliability, idempotency, outbox, dpop]
   delete_branch_on_merge: true
+  allow_auto_merge: true
   allow_merge_commit: false
   allow_rebase_merge: false
   allow_squash_merge: true
-  squash_merge_commit_title: PR_TITLE
-  squash_merge_commit_message: PR_BODY
+  allow_update_branch: false
+  squash_merge_commit_title: COMMIT_OR_PR_TITLE
+  squash_merge_commit_message: COMMIT_MESSAGES
 security:
   advanced_security: true
   secret_scanning: true

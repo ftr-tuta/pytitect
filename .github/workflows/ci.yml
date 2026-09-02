@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   lint:
-    name: Lint
+    name: CI / Lint
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -27,7 +27,7 @@ jobs:
       - run: uv run ruff check .
 
   typecheck:
-    name: Typecheck
+    name: CI / Typecheck
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -39,7 +39,7 @@ jobs:
       - run: uv run mypy
 
   unit-python:
-    name: Unit Python ${{ matrix.python }}
+    name: CI / Unit Python ${{ matrix.python }}
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -55,7 +55,7 @@ jobs:
       - run: uv run pytest -m "not postgres"
 
   unit:
-    name: Unit
+    name: CI / Unit
     if: always()
     needs: [unit-python]
     runs-on: ubuntu-24.04
@@ -66,7 +66,7 @@ jobs:
         run: python -c 'import json,os,sys; sys.exit(any(v["result"] != "success" for v in json.loads(os.environ["RESULTS"]).values()))'
 
   django-minimum:
-    name: Django 5.2 minimum
+    name: CI / Django 5.2 minimum
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -76,10 +76,10 @@ jobs:
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
       - run: uv sync --all-extras --frozen
       - run: uv pip install "Django==5.2.1" "djangorestframework==3.16.0"
-      - run: uv run pytest tests/test_django_drf.py
+      - run: uv run pytest --no-cov tests/test_django_drf.py
 
   django-latest:
-    name: Django 5.2 latest
+    name: CI / Django 5.2 latest
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -88,10 +88,10 @@ jobs:
           python-version: "3.14"
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
       - run: uv sync --all-extras --frozen
-      - run: uv run pytest tests/test_django_drf.py
+      - run: uv run pytest --no-cov tests/test_django_drf.py
 
   postgres:
-    name: PostgreSQL
+    name: CI / PostgreSQL
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -116,10 +116,10 @@ jobs:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
       - run: uv sync --all-extras --frozen
-      - run: uv run pytest -m postgres tests/test_postgresql_leases.py
+      - run: uv run pytest --no-cov -m postgres tests/test_postgresql_leases.py
 
   package:
-    name: Package
+    name: CI / Package
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -135,7 +135,7 @@ jobs:
       - run: uv run python tool/optional_imports.py
 
   contracts-security:
-    name: Contracts and Security
+    name: CI / Contracts and Security
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -144,10 +144,10 @@ jobs:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
       - run: uv sync --all-extras --frozen
-      - run: uv run pytest tests/test_contracts.py tests/test_security.py
+      - run: uv run pytest --no-cov tests/test_contracts.py tests/test_security.py
 
   required:
-    name: Required
+    name: CI / Required
     if: always()
     needs: [lint, typecheck, unit, django-minimum, django-latest, postgres, package, contracts-security]
     runs-on: ubuntu-24.04

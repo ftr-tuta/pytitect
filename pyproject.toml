@@ -1,0 +1,116 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pytitect"
+dynamic = ["version"]
+description = "Explicit, consumer-owned reliability and protocol building blocks for Python services"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "BSD-3-Clause"
+authors = [{ name = "ftr", email = "ftr@tuta.com" }]
+keywords = ["django", "reliability", "idempotency", "outbox", "dpop"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: BSD License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Typing :: Typed",
+]
+dependencies = []
+
+[project.urls]
+Documentation = "https://github.com/ftr-tuta/pytitect/tree/main/docs"
+Issues = "https://github.com/ftr-tuta/pytitect/issues"
+Repository = "https://github.com/ftr-tuta/pytitect"
+
+[project.optional-dependencies]
+django = ["Django>=5.2.1,<5.3"]
+drf = ["Django>=5.2.1,<5.3", "djangorestframework>=3.16,<4"]
+contracts = [
+  "Django>=5.2.1,<5.3",
+  "djangorestframework>=3.16,<4",
+  "drf-spectacular>=0.28,<1",
+  "PyYAML>=6,<7",
+]
+canonical-json = ["rfc8785>=0.1.4,<1"]
+dpop = ["PyJWT[crypto]>=2.10,<3", "rfc8785>=0.1.4,<1"]
+signed-http = ["http-message-signatures>=2.0.1,<3"]
+security = [
+  "rfc8785>=0.1.4,<1",
+  "PyJWT[crypto]>=2.10,<3",
+  "http-message-signatures>=2.0.1,<3",
+]
+
+[dependency-groups]
+dev = [
+  "build>=1.2",
+  "django-stubs>=5.2,<5.3",
+  "djangorestframework-stubs>=3.16,<4",
+  "hatchling>=1.27",
+  "hypothesis>=6.130",
+  "mypy>=1.15",
+  "psycopg[binary]>=3.2,<4",
+  "pytest>=8.3",
+  "pytest-cov>=6",
+  "ruff>=0.11",
+  "twine>=6",
+  "types-PyYAML>=6",
+]
+
+[tool.hatch.version]
+path = "src/pytitect/__about__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pytitect"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/src",
+  "/tests",
+  "/README.md",
+  "/LICENSE",
+  "/CHANGELOG.md",
+  "/CODE_OF_CONDUCT.md",
+  "/CONTRIBUTING.md",
+  "/SECURITY.md",
+  "/docs",
+  "/examples",
+  "/tool",
+  "/pyproject.toml",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests", "tool"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+"tests/test_django_drf.py" = ["E402"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "src"
+packages = ["pytitect"]
+
+[tool.pytest.ini_options]
+addopts = "--strict-config --strict-markers --cov=pytitect --cov-branch --cov-report=term-missing"
+testpaths = ["tests"]
+markers = ["postgres: requires an explicitly configured PostgreSQL test database"]
+
+[tool.coverage.run]
+source = ["pytitect"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 75

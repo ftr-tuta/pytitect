@@ -1,0 +1,86 @@
+# Pytitect
+
+Pytitect is a collection of explicit, consumer-owned building blocks for reliable Python
+services. Its core has no runtime dependencies. Optional adapters support Django 5.2, Django
+REST Framework, drf-spectacular, RFC 8785, DPoP, and HTTP Message Signatures.
+
+> **Status:** `0.9.0a1` is a prerelease. APIs may still change before 1.0.
+
+## Design
+
+Pytitect supplies policies, typed outcomes, ports, and bounded reference implementations. The
+application retains ownership of its database schema, transaction placement, authentication,
+authorization, routing, process model, and protocol binding. There is no global runtime and no
+automatic protocol selection.
+
+```python
+from datetime import timedelta
+
+from pytitect import PytitectRuntime
+from pytitect.idempotency import IdempotencyCoordinator, InMemoryIdempotencyStore
+
+runtime = PytitectRuntime()
+coordinator = IdempotencyCoordinator(
+    InMemoryIdempotencyStore[dict[str, object]](),
+    ttl=timedelta(minutes=10),
+    clock=runtime.clock,
+)
+```
+
+Importing `pytitect` does not access settings, a database, the network, logging, or optional
+frameworks. The in-memory stores are bounded test/reference tools; they do not promise durability,
+cross-process coordination, or exactly-once delivery.
+
+## Installation
+
+The dependency-free core requires Python 3.12 or newer.
+
+```console
+pip install pytitect
+pip install 'pytitect[django]'
+pip install 'pytitect[drf,contracts]'
+pip install 'pytitect[security]'
+```
+
+The supported web framework line is deliberately narrow: Django `5.2.x` and DRF `>=3.16,<4`.
+The `pytitect.aio` namespace is reserved; this release has no FastAPI, ASGI, or async-store
+implementation.
+
+## Architecture and package map
+
+- `pytitect.core`: clocks, deadlines, finite limits, request context, opaque IDs, fingerprints,
+  and the explicit immutable runtime.
+- `pytitect.http` and `pytitect.contracts`: Problem Details, exact version/capability decisions,
+  deterministic manifests, and bounded local `$ref` resolution.
+- `pytitect.idempotency` and `pytitect.receipts`: typed request coordination and state receipts.
+- `pytitect.inbox`, `pytitect.outbox`, and `pytitect.checkpoints`: delivery primitives without a
+  scheduler, worker, or schema.
+- `pytitect.leases`: TTL ownership and monotonic fencing. Authority must be checked under the same
+  lock and transaction as the protected mutation.
+- `pytitect.observability`: allowlisted structured events with hashing/redaction.
+- `pytitect.canaries`: consumer-triggered, one-round health probes with no scheduler.
+- `pytitect.django`, `pytitect.drf`, and `pytitect.security`: explicit optional adapters.
+
+See the focused guides in [`docs/`](docs/architecture.md), the synthetic examples in
+[`examples/`](examples/django_legacy/README.md), and the public API policy in
+[`docs/versioning.md`](docs/versioning.md).
+
+## Security boundaries
+
+Pytitect validates protocol proofs. It does not decide which session, connector, database, tenant,
+or permission a proof authorizes. Key resolution and binding remain application decisions. Never
+log raw bodies, credentials, cookies, tokens, idempotency keys, DSNs, or sensitive paths.
+
+Report vulnerabilities using [SECURITY.md](SECURITY.md), not a public issue.
+
+## Development
+
+```console
+uv sync --all-extras
+uv run ruff check .
+uv run mypy
+uv run pytest
+uv run python tool/verify.py
+```
+
+The project is BSD-3-Clause licensed.

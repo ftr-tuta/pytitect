@@ -88,5 +88,5 @@ class BoundedJSONField(serializers.JSONField):
                 raise ValueError("JSON encoding exceeds max_body_bytes")
             validate_json(data, limits=self._limits)
         except (TypeError, ValueError) as error:
-            raise serializers.ValidationError(str(error), code="invalid") from error
+            raise serializers.ValidationError("Invalid JSON value.", code="invalid") from error
         return super().to_internal_value(data)

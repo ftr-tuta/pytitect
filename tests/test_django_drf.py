@@ -103,6 +103,7 @@ def test_strict_fields_accept_exact_json_types_and_reject_coercion() -> None:
         "tags",
         "data",
     }
+    assert str(invalid.errors["data"][0]) == "Invalid JSON value."
     unknown = PayloadSerializer(data={"unknown": True})
     assert not unknown.is_valid() and set(unknown.errors) == {"unknown"}
     nested = NestedSerializer(

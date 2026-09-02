@@ -1,0 +1,31 @@
+{
+  "default_context": {
+  "project_name": "Pytitect Protocol Matrix",
+  "project_slug": "pytitect_protocol_matrix",
+  "description": "Synthetic protocol isolation and PostgreSQL concurrency canary for Pytitect",
+  "author_name": "Pytitect Maintainers",
+  "domain_name": "example.invalid",
+  "email": "maintainers@example.invalid",
+  "version": "1.0.0",
+  "open_source_license": "BSD",
+  "username_type": "username",
+  "timezone": "UTC",
+  "windows": "n",
+  "editor": "None",
+  "use_docker": "y",
+  "postgresql_version": "16",
+  "cloud_provider": "None",
+  "mail_service": "Other SMTP",
+  "use_async": "n",
+  "use_drf": "y",
+  "frontend_pipeline": "None",
+  "use_celery": "n",
+  "use_mailpit": "n",
+  "use_sentry": "n",
+  "use_whitenoise": "y",
+  "use_heroku": "n",
+  "ci_tool": "Github",
+  "keep_local_envs_in_vcs": "y",
+  "debug": "n"
+  }
+}

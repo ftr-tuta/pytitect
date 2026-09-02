@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Callable, Mapping
+from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 from types import MappingProxyType
 
-from pytitect.core import Clock, JsonScalar, SystemClock
+from pytitect.core import Clock, JsonScalar, Limits, Observer, SystemClock
 
 _FORBIDDEN_FRAGMENTS = frozenset(
     {
@@ -98,3 +99,44 @@ class StructuredObserver:
         if not name:
             raise ValueError("event name must not be empty")
         self._sink(Event(name, self._clock.now(), self._policy.filter(attributes)))
+
+
+@dataclass(frozen=True, slots=True)
+class ObserverFailure:
+    observer: str
+    exception_type: str
+    message: str
+
+
+class FailureIsolatedObserver:
+    """Contain observer failures and report only bounded, sanitized diagnostics."""
+
+    def __init__(
+        self,
+        observer: Observer,
+        fallback: Callable[[ObserverFailure], None],
+        *,
+        limits: Limits | None = None,
+    ) -> None:
+        self._observer = observer
+        self._fallback = fallback
+        self._limits = limits or Limits()
+
+    def observe(self, name: str, attributes: Mapping[str, JsonScalar]) -> None:
+        try:
+            self._observer.observe(name, attributes)
+        except Exception as error:
+            failure = ObserverFailure(
+                observer=type(self._observer).__name__[: self._limits.max_string_length],
+                exception_type=type(error).__name__[: self._limits.max_string_length],
+                message=_sanitized_message(error, self._limits.max_string_length),
+            )
+            with suppress(Exception):
+                self._fallback(failure)
+
+
+def _sanitized_message(error: Exception, limit: int) -> str:
+    message = " ".join(str(error).split())
+    if not message:
+        message = "observer failed"
+    return message[:limit]

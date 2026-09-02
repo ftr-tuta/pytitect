@@ -1221,6 +1221,10 @@ security = [
 signed-http = [
     { name = "http-message-signatures" },
 ]
+sync = [
+    { name = "cryptography" },
+    { name = "rfc8785" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -1240,6 +1244,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cryptography", marker = "extra == 'sync'", specifier = ">=46,<51" },
     { name = "django", marker = "extra == 'contracts'", specifier = ">=5.2.1,<5.3" },
     { name = "django", marker = "extra == 'django'", specifier = ">=5.2.1,<5.3" },
     { name = "django", marker = "extra == 'drf'", specifier = ">=5.2.1,<5.3" },
@@ -1254,8 +1259,9 @@ requires-dist = [
     { name = "rfc8785", marker = "extra == 'canonical-json'", specifier = ">=0.1.4,<1" },
     { name = "rfc8785", marker = "extra == 'dpop'", specifier = ">=0.1.4,<1" },
     { name = "rfc8785", marker = "extra == 'security'", specifier = ">=0.1.4,<1" },
+    { name = "rfc8785", marker = "extra == 'sync'", specifier = ">=0.1.4,<1" },
 ]
-provides-extras = ["canonical-json", "contracts", "django", "dpop", "drf", "security", "signed-http"]
+provides-extras = ["canonical-json", "contracts", "django", "dpop", "drf", "security", "signed-http", "sync"]
 
 [package.metadata.requires-dev]
 dev = [

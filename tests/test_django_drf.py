@@ -20,6 +20,7 @@ if not settings.configured:
 
 import django
 from rest_framework import serializers
+from rest_framework.exceptions import AuthenticationFailed, Throttled
 
 django.setup()
 
@@ -50,7 +51,7 @@ def test_core_and_explicit_adapters_import_without_settings() -> None:
         text=True,
     )
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "0.9.0a1"
+    assert result.stdout.strip() == "1.0.0rc1"
 
 
 class PayloadSerializer(ClosedSerializer):
@@ -131,6 +132,18 @@ def test_problem_handler_returns_problem_json() -> None:
     assert response.status_code == 400
     assert response["Content-Type"] == "application/problem+json"
     assert response.data["type"].endswith("validation-error")
+
+
+def test_problem_handler_preserves_original_headers() -> None:
+    renderer = ProblemRenderer("https://errors.example/", static_titles({}))
+    handler = make_exception_handler(renderer)
+    authentication = AuthenticationFailed("bad")
+    authentication.auth_header = 'DPoP realm="canary"'
+    response = handler(authentication, {})
+    assert response["WWW-Authenticate"] == 'DPoP realm="canary"'
+    assert response["Content-Type"] == "application/problem+json"
+    throttled = handler(Throttled(wait=3), {})
+    assert throttled["Retry-After"] == "3"
 
 
 def test_django_transaction_boundary_uses_explicit_alias(monkeypatch: pytest.MonkeyPatch) -> None:

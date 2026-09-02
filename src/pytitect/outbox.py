@@ -61,6 +61,19 @@ type DeliveryResult = Delivered | Retryable | PermanentFailure
 
 
 @dataclass(frozen=True, slots=True)
+class OutboxAdded:
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class OutboxDuplicate:
+    pass
+
+
+type OutboxAddResult = OutboxAdded | OutboxDuplicate
+
+
+@dataclass(frozen=True, slots=True)
 class RetryPolicy:
     initial_delay: timedelta = timedelta(seconds=1)
     multiplier: float = 2.0
@@ -81,7 +94,7 @@ class RetryPolicy:
 
 
 class OutboxStore(Protocol[PayloadT]):
-    def add(self, envelope: OutboxEnvelope[PayloadT]) -> None: ...
+    def add(self, envelope: OutboxEnvelope[PayloadT]) -> OutboxAddResult: ...
 
     def claim(
         self, *, now: datetime, limit: int, claim_ttl: timedelta
@@ -110,16 +123,17 @@ class InMemoryOutboxStore[PayloadT]:
         self._permanent_failures: dict[OpaqueId[object], str] = {}
         self._lock = threading.RLock()
 
-    def add(self, envelope: OutboxEnvelope[PayloadT]) -> None:
+    def add(self, envelope: OutboxEnvelope[PayloadT]) -> OutboxAddResult:
         with self._lock:
             if (
                 envelope.message_id in self._items
                 or envelope.message_id in self._permanent_failures
             ):
-                return
+                return OutboxDuplicate()
             if len(self._items) >= self._capacity:
                 raise OverflowError("outbox capacity exceeded")
             self._items[envelope.message_id] = _Stored(envelope)
+            return OutboxAdded()
 
     def claim(
         self, *, now: datetime, limit: int, claim_ttl: timedelta

@@ -22,6 +22,8 @@ jobs:
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.7"
       - run: uv sync --all-extras --frozen
       - run: uv run ruff format --check .
       - run: uv run ruff check .
@@ -35,6 +37,8 @@ jobs:
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.7"
       - run: uv sync --all-extras --frozen
       - run: uv run mypy
 
@@ -44,13 +48,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.12", "3.14"]
+        python: ["3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python }}
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.7"
       - run: uv sync --all-extras --frozen
       - run: uv run pytest -m "not postgres"
 
@@ -74,6 +80,8 @@ jobs:
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.7"
       - run: uv sync --all-extras --frozen
       - run: uv pip install "Django==5.2.1" "djangorestframework==3.16.0"
       - run: uv run pytest --no-cov tests/test_django_drf.py
@@ -87,6 +95,8 @@ jobs:
         with:
           python-version: "3.14"
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.7"
       - run: uv sync --all-extras --frozen
       - run: uv run pytest --no-cov tests/test_django_drf.py
 
@@ -115,6 +125,8 @@ jobs:
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.7"
       - run: uv sync --all-extras --frozen
       - run: uv run pytest --no-cov -m postgres tests/test_postgresql_leases.py
 
@@ -127,12 +139,64 @@ jobs:
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.7"
       - run: uv sync --all-extras --frozen
       - run: uv run python -m build --no-isolation
       - run: uv run python -m twine check dist/*
       - run: uv run python tool/package_smoke.py dist/*.whl
       - run: uv run python tool/api_snapshot.py
       - run: uv run python tool/optional_imports.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pytitect-candidate-wheel
+          path: dist/*.whl
+          if-no-files-found: error
+
+  django-canary:
+    name: CI / Django protocol matrix
+    needs: [package]
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: pytitect_canary
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pytitect_canary
+      DJANGO_SETTINGS_MODULE: config.settings.test
+      DJANGO_SECRET_KEY: synthetic-ci-only-key
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.7"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: pytitect-candidate-wheel
+          path: candidate-dist
+      - run: uv sync --project canaries/django_protocol_matrix --frozen
+      - name: Install the exact candidate wheel
+        run: >-
+          uv pip install
+          --python canaries/django_protocol_matrix/.venv/bin/python
+          candidate-dist/*.whl
+      - run: canaries/django_protocol_matrix/.venv/bin/python canaries/django_protocol_matrix/manage.py check
+      - run: canaries/django_protocol_matrix/.venv/bin/python canaries/django_protocol_matrix/manage.py migrate --noinput
+      - run: canaries/django_protocol_matrix/.venv/bin/python canaries/django_protocol_matrix/manage.py makemigrations --check --dry-run
+      - run: canaries/django_protocol_matrix/.venv/bin/python -m pytest canaries/django_protocol_matrix/tests
 
   contracts-security:
     name: CI / Contracts and Security
@@ -143,13 +207,15 @@ jobs:
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.7"
       - run: uv sync --all-extras --frozen
       - run: uv run pytest --no-cov tests/test_contracts.py tests/test_security.py
 
   required:
     name: CI / Required
     if: always()
-    needs: [lint, typecheck, unit, django-minimum, django-latest, postgres, package, contracts-security]
+    needs: [lint, typecheck, unit, django-minimum, django-latest, postgres, package, django-canary, contracts-security]
     runs-on: ubuntu-24.04
     steps:
       - name: Require every CI job

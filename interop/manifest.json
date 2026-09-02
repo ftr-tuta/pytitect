@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "candidate": "1.0.0rc1",
+  "materialized": false,
+  "canonicalization": "RFC 8785 with I-JSON inputs",
+  "fixtures": [
+    {
+      "path": "python/fixtures.json",
+      "topics": [
+        "canonical-json",
+        "fingerprints",
+        "problem-details",
+        "receipts",
+        "opaque-cursors",
+        "dpop",
+        "content-digest",
+        "http-message-signatures",
+        "timestamps",
+        "uuids",
+        "unknown-fields",
+        "limits"
+      ]
+    }
+  ]
+}

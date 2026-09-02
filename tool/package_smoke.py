@@ -7,7 +7,10 @@ import argparse
 import subprocess
 import sys
 import tempfile
+import zipfile
 from pathlib import Path
+
+from pytitect.__about__ import __version__
 
 COMBINATIONS = {
     "": "import pytitect",
@@ -18,6 +21,11 @@ COMBINATIONS = {
     "dpop": "from pytitect.security import DPoPVerifier",
     "signed-http": "from pytitect.security import HttpMessageSignaturesBackend",
     "security": "import pytitect.security",
+    "sync": (
+        "from pytitect.sync import OpaqueCursorCodec; "
+        "OpaqueCursorCodec({'k': b'x' * 32}, nonce_factory=lambda size: b'n' * size).encode("
+        "b'p', dataset='d', partition='p', kid='k', algorithm='A256GCM')"
+    ),
     "drf,contracts": "import pytitect.drf, pytitect.contracts.spectacular",
 }
 
@@ -31,6 +39,14 @@ def main() -> int:
     parser.add_argument("wheel", type=Path)
     args = parser.parse_args()
     wheel = args.wheel.resolve(strict=True)
+    with zipfile.ZipFile(wheel) as archive:
+        forbidden = [
+            name
+            for name in archive.namelist()
+            if name.startswith(("canaries/", "tests/")) or "/migrations/" in name
+        ]
+        if forbidden:
+            raise SystemExit(f"wheel contains forbidden consumer-owned paths: {forbidden}")
     for extra, adapter_import in COMBINATIONS.items():
         with tempfile.TemporaryDirectory(prefix="pytitect-smoke-") as directory:
             environment = Path(directory)
@@ -47,7 +63,7 @@ def main() -> int:
                     "-I",
                     "-c",
                     (
-                        "import pytitect; assert pytitect.__version__ == '0.9.0a1'; "
+                        f"import pytitect; assert pytitect.__version__ == {__version__!r}; "
                         f"{adapter_import}"
                     ),
                 ]

@@ -30,8 +30,12 @@ def make_exception_handler(
             )
         else:
             problem = classify(exc, response.status_code, response.data)
-        response = Response(renderer.as_dict(problem), status=problem.status)
-        response["Content-Type"] = renderer.content_type
-        return response
+        original_headers = dict(response.items())
+        rendered = Response(renderer.as_dict(problem), status=problem.status)
+        for name, value in original_headers.items():
+            if name.casefold() != "content-type":
+                rendered[name] = value
+        rendered["Content-Type"] = renderer.content_type
+        return rendered
 
     return handler

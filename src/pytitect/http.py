@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Final
 from urllib.parse import quote
 
-from pytitect.core import Clock, JsonValue, SystemClock
+from pytitect.core import Clock, JsonValue, Limits, SystemClock, validate_json
 
 _RESERVED: Final = frozenset({"type", "title", "status", "detail", "instance", "timestamp"})
 
@@ -48,6 +48,7 @@ class ProblemRenderer:
     clock: Clock = field(default_factory=SystemClock)
     timestamp_formatter: TimestampFormatter = _default_timestamp
     extension_provider: ExtensionProvider = lambda problem: {}
+    limits: Limits = field(default_factory=Limits)
 
     def __post_init__(self) -> None:
         if not self.type_base_uri.endswith("/"):
@@ -58,6 +59,13 @@ class ProblemRenderer:
         overlap = _RESERVED.intersection(provided)
         if overlap:
             raise ValueError(f"extension provider used reserved fields: {sorted(overlap)!r}")
+        duplicate_extensions = set(problem.extensions).intersection(provided)
+        if duplicate_extensions:
+            raise ValueError(
+                f"extension provider replaced problem fields: {sorted(duplicate_extensions)!r}"
+            )
+        if len(problem.extensions) + len(provided) > self.limits.max_metadata_items:
+            raise ValueError("problem extensions exceed max_metadata_items")
         document: dict[str, JsonValue] = {
             "type": f"{self.type_base_uri}{quote(problem.code, safe='-._~')}",
             "title": self.title_provider(problem),
@@ -70,10 +78,24 @@ class ProblemRenderer:
             document["instance"] = problem.instance
         document.update(problem.extensions)
         document.update(provided)
+        validate_json(document, limits=self.limits)
+        encoded = json.dumps(
+            document,
+            ensure_ascii=False,
+            allow_nan=False,
+            separators=(",", ":"),
+        ).encode()
+        if len(encoded) > self.limits.max_body_bytes:
+            raise ValueError("problem document exceeds max_body_bytes")
         return document
 
     def render(self, problem: Problem) -> bytes:
-        return json.dumps(self.as_dict(problem), ensure_ascii=False, separators=(",", ":")).encode()
+        return json.dumps(
+            self.as_dict(problem),
+            ensure_ascii=False,
+            allow_nan=False,
+            separators=(",", ":"),
+        ).encode()
 
     @property
     def content_type(self) -> str:

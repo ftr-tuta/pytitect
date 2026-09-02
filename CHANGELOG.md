@@ -41,7 +41,7 @@ Candidate metadata:
   are replaced without compatibility shims by `AtomicCheckpointCoordinator`,
   `DeferredCheckpointCoordinator`, and `DjangoFencedCommit`.
 
-This candidate does not claim bilateral Dartitect interoperability or any AgroX integration.
+This candidate makes no interoperability claims beyond the normative fixtures committed here.
 
 ## 0.9.0a1 - 2026-09-02
 

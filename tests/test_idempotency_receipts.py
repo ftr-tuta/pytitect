@@ -19,8 +19,10 @@ from pytitect.idempotency import (
     Uncertain,
 )
 from pytitect.receipts import (
+    ConfirmedCompleted,
     InvalidTransition,
     MutationReceipt,
+    ReceiptReconciler,
     ReceiptState,
     ReceiptTransitioned,
 )
@@ -114,3 +116,39 @@ def test_receipt_transitions_and_metadata_bounds() -> None:
         MutationReceipt[str](
             OpaqueId("x"), ReceiptState.ACCEPTED, now, now, metadata={str(i): i for i in range(65)}
         )
+
+
+def test_uncertain_receipt_requires_explicit_cas_reconciliation() -> None:
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    uncertain = MutationReceipt[str](
+        OpaqueId("receipt-uncertain"), ReceiptState.UNCERTAIN, now, now
+    )
+
+    class Store:
+        current = uncertain
+
+        def get(self, receipt_id):  # type: ignore[no-untyped-def]
+            return self.current if receipt_id == self.current.receipt_id else None
+
+        def add(self, receipt):  # type: ignore[no-untyped-def]
+            del receipt
+            return False
+
+        def transition(self, receipt, target):  # type: ignore[no-untyped-def]
+            del receipt, target
+            return False
+
+        def reconcile_uncertain(self, receipt, target):  # type: ignore[no-untyped-def]
+            if receipt != self.current:
+                return False
+            self.current = target
+            return True
+
+    outcome = ReceiptReconciler(Store()).reconcile(
+        uncertain.receipt_id,
+        ReceiptState.COMPLETED,
+        at=now + timedelta(seconds=1),
+        result="confirmed",
+    )
+    assert isinstance(outcome, ConfirmedCompleted)
+    assert outcome.receipt.result == "confirmed"

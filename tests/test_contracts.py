@@ -68,8 +68,7 @@ def test_resolver_internal_external_pointer_and_siblings(tmp_path: Path) -> None
     assert isinstance(result, ResolvedDocument)
     assert result.references == 3
     assert result.value["properties"]["local"] == {  # type: ignore[index]
-        "type": "boolean",
-        "description": "kept",
+        "allOf": [{"type": "boolean"}, {"description": "kept"}]
     }
 
 
@@ -118,6 +117,25 @@ def test_resolver_symlink_depth_reference_and_byte_limits(tmp_path: Path) -> Non
     assert isinstance(malformed, RefRejected) and malformed.code == "malformed_document"
     with pytest.raises(ValueError):
         ResolverLimits(max_depth=0)
+
+
+@pytest.mark.parametrize("token", ["-1", "+1", "01", "-0", "\N{ARABIC-INDIC DIGIT ONE}"])
+def test_resolver_rejects_noncanonical_array_indices(tmp_path: Path, token: str) -> None:
+    (tmp_path / "root.json").write_text(
+        json.dumps({"items": [1], "value": {"$ref": f"#/items/{token}"}})
+    )
+    result = LocalRefResolver(tmp_path).resolve(Path("root.json"))
+    assert isinstance(result, RefRejected)
+    assert result.code == "missing_pointer"
+
+
+def test_resolver_rejects_invalid_pointer_escapes_and_duplicate_yaml(tmp_path: Path) -> None:
+    (tmp_path / "root.json").write_text('{"$ref":"#/bad~2escape"}')
+    invalid = LocalRefResolver(tmp_path).resolve(Path("root.json"))
+    assert isinstance(invalid, RefRejected) and invalid.code == "invalid_pointer"
+    (tmp_path / "duplicate.yaml").write_text("value: 1\nvalue: 2\n")
+    duplicate = LocalRefResolver(tmp_path).resolve(Path("duplicate.yaml"))
+    assert isinstance(duplicate, RefRejected) and duplicate.code == "malformed_document"
 
 
 def test_problem_schema_is_not_registered_globally() -> None:

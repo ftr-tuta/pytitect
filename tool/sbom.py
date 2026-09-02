@@ -23,6 +23,10 @@ def package_version(package: dict[str, Any]) -> str | None:
     package_name = package.get("name")
     if not isinstance(package_name, str):
         return None
+    if package_name == "pytitect" and "editable" in package.get("source", {}):
+        from pytitect.__about__ import __version__
+
+        return __version__
     try:
         return version(package_name)
     except PackageNotFoundError:
@@ -37,9 +41,15 @@ def main() -> int:
     payload = args.lock.read_bytes()
     lock: dict[str, Any] = tomllib.loads(payload.decode())
     timestamp = datetime.fromtimestamp(int(os.environ.get("SOURCE_DATE_EPOCH", "0")), UTC)
+    locked_packages = lock.get("package", [])
+    identifiers = {
+        package["name"]: f"SPDXRef-Package-{index}"
+        for index, package in enumerate(locked_packages, start=1)
+    }
     packages = []
     relationships = []
-    for index, package in enumerate(lock.get("package", []), start=1):
+    root_id: str | None = None
+    for index, package in enumerate(locked_packages, start=1):
         spdx_id = f"SPDXRef-Package-{index}"
         entry = {
             "SPDXID": spdx_id,
@@ -53,13 +63,35 @@ def main() -> int:
         if resolved_version is not None:
             entry["versionInfo"] = resolved_version
         packages.append(entry)
-        relationships.append(
-            {
-                "spdxElementId": "SPDXRef-DOCUMENT",
-                "relationshipType": "DESCRIBES",
-                "relatedSpdxElement": spdx_id,
-            }
-        )
+        if package["name"] == "pytitect":
+            root_id = spdx_id
+    if root_id is None:
+        raise SystemExit("uv.lock does not contain the pytitect root package")
+    relationships.append(
+        {
+            "spdxElementId": "SPDXRef-DOCUMENT",
+            "relationshipType": "DESCRIBES",
+            "relatedSpdxElement": root_id,
+        }
+    )
+    dependency_relations: set[tuple[str, str]] = set()
+    for package in locked_packages:
+        source_id = identifiers[package["name"]]
+        declared = list(package.get("dependencies", []))
+        for values in package.get("optional-dependencies", {}).values():
+            declared.extend(values)
+        for dependency in declared:
+            target_id = identifiers.get(dependency["name"])
+            if target_id is not None:
+                dependency_relations.add((source_id, target_id))
+    relationships.extend(
+        {
+            "spdxElementId": source,
+            "relationshipType": "DEPENDS_ON",
+            "relatedSpdxElement": target,
+        }
+        for source, target in sorted(dependency_relations)
+    )
     digest = hashlib.sha256(payload).hexdigest()
     document = {
         "spdxVersion": "SPDX-2.3",

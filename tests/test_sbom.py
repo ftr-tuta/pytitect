@@ -22,6 +22,7 @@ def test_sbom_resolves_unversioned_editable_root(tmp_path: Path) -> None:
                 "[[package]]",
                 'name = "pytitect"',
                 'source = { editable = "." }',
+                'dependencies = [{ name = "dependency" }]',
             )
         )
     )
@@ -36,5 +37,17 @@ def test_sbom_resolves_unversioned_editable_root(tmp_path: Path) -> None:
 
     document = json.loads(output.read_text())
     versions = {package["name"]: package.get("versionInfo") for package in document["packages"]}
-    assert versions == {"dependency": "1.2.3", "pytitect": "0.9.0a1"}
+    assert versions == {"dependency": "1.2.3", "pytitect": "1.0.0rc1"}
     assert document["creationInfo"]["created"] == "1970-01-01T00:00:00Z"
+    describes = [
+        relation
+        for relation in document["relationships"]
+        if relation["relationshipType"] == "DESCRIBES"
+    ]
+    depends = [
+        relation
+        for relation in document["relationships"]
+        if relation["relationshipType"] == "DEPENDS_ON"
+    ]
+    assert len(describes) == 1
+    assert len(depends) == 1

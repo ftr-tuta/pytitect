@@ -26,6 +26,7 @@ MODULES = (
     "pytitect.outbox",
     "pytitect.receipts",
     "pytitect.security",
+    "pytitect.sync",
 )
 
 

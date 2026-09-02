@@ -4,7 +4,8 @@ Pytitect is a collection of explicit, consumer-owned building blocks for reliabl
 services. Its core has no runtime dependencies. Optional adapters support Django 5.2, Django
 REST Framework, drf-spectacular, RFC 8785, DPoP, and HTTP Message Signatures.
 
-> **Status:** `0.9.0a1` is a prerelease. APIs may still change before 1.0.
+> **Status:** the source is prepared as `1.0.0rc1`; candidate tag `v1.0.0-rc.1` has not
+> been materialized. `v0.9.0a1` remains the latest public distribution.
 
 ## Design
 
@@ -40,6 +41,7 @@ pip install pytitect
 pip install 'pytitect[django]'
 pip install 'pytitect[drf,contracts]'
 pip install 'pytitect[security]'
+pip install 'pytitect[sync]'
 ```
 
 The supported web framework line is deliberately narrow: Django `5.2.x` and DRF `>=3.16,<4`.
@@ -59,6 +61,8 @@ implementation.
   lock and transaction as the protected mutation.
 - `pytitect.observability`: allowlisted structured events with hashing/redaction.
 - `pytitect.canaries`: consumer-triggered, one-round health probes with no scheduler.
+- `pytitect.sync`: authenticated opaque cursors, bounded mutation batches, dependency graphs,
+  and generation guards without a sync engine or scheduler.
 - `pytitect.django`, `pytitect.drf`, and `pytitect.security`: explicit optional adapters.
 
 See the focused guides in [`docs/`](docs/architecture.md), the synthetic examples in

@@ -7,7 +7,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from enum import StrEnum
 from types import MappingProxyType
-from typing import TypeVar
+from typing import Protocol, TypeVar
 
 from pytitect.core import JsonScalar, OpaqueId
 
@@ -129,6 +129,87 @@ class InvalidTransition:
 
 
 type TransitionResult[ResultT] = ReceiptTransitioned[ResultT] | InvalidTransition
+
+
+class ReceiptStore(Protocol[ResultT]):
+    """Persistence port; resolving uncertainty requires the explicit CAS method."""
+
+    def get(self, receipt_id: OpaqueId[object]) -> Receipt[ResultT] | None: ...
+
+    def add(self, receipt: Receipt[ResultT]) -> bool: ...
+
+    def transition(self, receipt: Receipt[ResultT], target: Receipt[ResultT]) -> bool: ...
+
+    def reconcile_uncertain(
+        self,
+        receipt: Receipt[ResultT],
+        target: Receipt[ResultT],
+    ) -> bool: ...
+
+
+@dataclass(frozen=True, slots=True)
+class ConfirmedCompleted[ResultT]:
+    receipt: Receipt[ResultT]
+
+
+@dataclass(frozen=True, slots=True)
+class ConfirmedRejected[ResultT]:
+    receipt: Receipt[ResultT]
+
+
+@dataclass(frozen=True, slots=True)
+class ConfirmedConflicted[ResultT]:
+    receipt: Receipt[ResultT]
+
+
+@dataclass(frozen=True, slots=True)
+class StillUncertain[ResultT]:
+    receipt: Receipt[ResultT] | None
+    reason: str
+
+
+type ReconciliationResult[ResultT] = (
+    ConfirmedCompleted[ResultT]
+    | ConfirmedRejected[ResultT]
+    | ConfirmedConflicted[ResultT]
+    | StillUncertain[ResultT]
+)
+
+
+@dataclass(frozen=True, slots=True)
+class ReceiptReconciler[ResultT]:
+    store: ReceiptStore[ResultT]
+
+    def reconcile(
+        self,
+        receipt_id: OpaqueId[object],
+        target: ReceiptState,
+        *,
+        at: datetime,
+        result: ResultT | None = None,
+    ) -> ReconciliationResult[ResultT]:
+        _utc(at)
+        if target not in {
+            ReceiptState.COMPLETED,
+            ReceiptState.REJECTED,
+            ReceiptState.CONFLICTED,
+        }:
+            raise ValueError("uncertain receipts may only reconcile to a confirmed terminal state")
+        current = self.store.get(receipt_id)
+        if current is None or current.state is not ReceiptState.UNCERTAIN:
+            return StillUncertain(current, "receipt is absent or no longer uncertain")
+        if at < current.updated_at:
+            return StillUncertain(current, "reconciliation timestamp moved backwards")
+        if target is ReceiptState.COMPLETED and result is None:
+            raise ValueError("completed reconciliation requires a result")
+        reconciled = replace(current, state=target, updated_at=at, result=result)
+        if not self.store.reconcile_uncertain(current, reconciled):
+            return StillUncertain(self.store.get(receipt_id), "receipt changed concurrently")
+        if target is ReceiptState.COMPLETED:
+            return ConfirmedCompleted(reconciled)
+        if target is ReceiptState.REJECTED:
+            return ConfirmedRejected(reconciled)
+        return ConfirmedConflicted(reconciled)
 
 
 def _utc(value: datetime) -> None:

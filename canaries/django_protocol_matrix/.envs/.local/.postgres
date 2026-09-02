@@ -1,0 +1,7 @@
+# PostgreSQL
+# ------------------------------------------------------------------------------
+POSTGRES_HOST=postgres
+POSTGRES_PORT=5432
+POSTGRES_DB=pytitect_protocol_matrix
+POSTGRES_USER=pytitect_canary
+POSTGRES_PASSWORD=synthetic-local-only

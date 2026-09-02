@@ -12,7 +12,7 @@ license = "BSD-3-Clause"
 authors = [{ name = "ftr", email = "ftr@tuta.com" }]
 keywords = ["django", "reliability", "idempotency", "outbox", "dpop"]
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 4 - Beta",
   "License :: OSI Approved :: BSD License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.12",
@@ -44,6 +44,7 @@ security = [
   "PyJWT[crypto]>=2.10,<3",
   "http-message-signatures>=2.0.1,<3",
 ]
+sync = ["rfc8785>=0.1.4,<1", "cryptography>=46,<51"]
 
 [dependency-groups]
 dev = [
@@ -79,6 +80,7 @@ include = [
   "/SECURITY.md",
   "/docs",
   "/examples",
+  "/interop",
   "/tool",
   "/pyproject.toml",
 ]
@@ -87,6 +89,7 @@ include = [
 target-version = "py312"
 line-length = 100
 src = ["src", "tests", "tool"]
+exclude = ["canaries"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]

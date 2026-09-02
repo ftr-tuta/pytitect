@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "canonical_json": {
+    "input": {"z": 1, "a": "é"},
+    "utf8": "{\"a\":\"é\",\"z\":1}",
+    "hex": "7b2261223a22c3a9222c227a223a317d",
+    "sha256": "fb64e573f7cde5b7efeda52ffc4bdd57572055b0b7e64a70172606c82c6c7eac"
+  },
+  "problem": {
+    "status": 409,
+    "content_type": "application/problem+json",
+    "body": {"type": "https://errors.example.invalid/conflict", "title": "Conflict", "status": 409, "timestamp": "2026-01-01T00:00:00Z", "detail": "Payload differs.", "receipt_id": "00000000-0000-4000-8000-000000000001"}
+  },
+  "receipt": {
+    "receipt_id": "00000000-0000-4000-8000-000000000001",
+    "kind": "mutation",
+    "state": "completed",
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:01Z",
+    "result": {"mutation_id": "00000000-0000-4000-8000-000000000002"}
+  },
+  "cursors": {
+    "context": {"dataset": "orders", "partition": "tenant-1", "kid": "fixture-key"},
+    "synthetic_key_hex": "6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b",
+    "payload_utf8": "opaque-page-1",
+    "expires_at": "2026-01-02T00:00:00Z",
+    "hs256": "eyJhbGciOiJIUzI1NiIsImRhdGFzZXQiOiJvcmRlcnMiLCJleHAiOjE3NjczMTIwMDAsImtpZCI6ImZpeHR1cmUta2V5IiwicGFydGl0aW9uIjoidGVuYW50LTEiLCJ2IjoxfQ.b3BhcXVlLXBhZ2UtMQ.pVoyU5TyWUsb7Hh9OrNWES_Zq2yYNntICCSLLfS7bZA",
+    "a256gcm_nonce_hex": "6e6e6e6e6e6e6e6e6e6e6e6e",
+    "a256gcm": "eyJhbGciOiJBMjU2R0NNIiwiZGF0YXNldCI6Im9yZGVycyIsImV4cCI6MTc2NzMxMjAwMCwia2lkIjoiZml4dHVyZS1rZXkiLCJub25jZSI6ImJtNXVibTV1Ym01dWJtNXUiLCJwYXJ0aXRpb24iOiJ0ZW5hbnQtMSIsInYiOjF9.90uGwWTRqKktQ25psg.fAL1cLp83nZNR5mD_fMEEQ"
+  },
+  "dpop": {
+    "private_scalar": 1,
+    "public_jwk": {"kty": "EC", "crv": "P-256", "x": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY", "y": "T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU"},
+    "claims": {"jti": "00000000-0000-4000-8000-000000000003", "htm": "POST", "htu": "https://api.example.invalid/tasks", "iat": 1767225600, "ath": "F30iRba6HrejUQBwrzD-RojRUlUkFovd8PoQVXZ9_xY", "nonce": "fixture-nonce"},
+    "access_token": "synthetic-access-token"
+  },
+  "signed_http": {
+    "method": "POST",
+    "target_uri": "https://api.example.invalid/tasks",
+    "body_utf8": "{\"value\":1}",
+    "content_digest": "sha-256=:SCCPlCjWRjS9jij/NFvw6rYNU8GPovvbC5vB6E3ytfY=:",
+    "signature_input": "pyhms=(\"@method\" \"@target-uri\" \"content-digest\");created=1767225600;keyid=\"fixture-key\";alg=\"hmac-sha256\";expires=1767225660;nonce=\"fixture-nonce\";tag=\"sync\"",
+    "signature": "pyhms=:CkmOkO6YgM//Zw97YxcW0L+EZ0DI1PLtrzIvWPx+Dkw=:",
+    "synthetic_key_hex": "6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b"
+  },
+  "boundaries": {
+    "timestamp": "2026-01-01T00:00:00Z",
+    "epoch_seconds": 1767225600,
+    "uuid": "00000000-0000-4000-8000-000000000004",
+    "unknown_field": {"known": true, "future_member": "must-be-rejected-at-closed-boundaries"},
+    "limits": {"max_body_bytes": 1048576, "max_json_depth": 32, "max_json_items": 10000, "max_metadata_items": 64, "max_string_length": 16384}
+  }
+}

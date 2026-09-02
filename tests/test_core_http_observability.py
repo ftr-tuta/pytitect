@@ -20,6 +20,7 @@ from pytitect.observability import (
     AttributeMode,
     AttributeRule,
     Event,
+    FailureIsolatedObserver,
     ObservationPolicy,
     StructuredObserver,
 )
@@ -135,3 +136,38 @@ def test_observability_filters_hashes_and_redacts() -> None:
         ObservationPolicy({"authorization_header": AttributeRule()})
     with pytest.raises(ValueError):
         ObservationPolicy({"subject": AttributeRule(AttributeMode.HASH)})
+
+
+def test_problem_limits_and_failure_isolated_observer() -> None:
+    renderer = ProblemRenderer(
+        "https://errors.example/",
+        static_titles({}),
+        limits=Limits(
+            max_body_bytes=128,
+            max_json_depth=2,
+            max_json_items=16,
+            max_metadata_items=1,
+            max_string_length=32,
+        ),
+    )
+    with pytest.raises(ValueError):
+        renderer.render(Problem(400, "bad", extensions={"one": 1, "two": 2}))
+    with pytest.raises(ValueError):
+        renderer.render(Problem(400, "bad", extensions={"number": float("nan")}))
+
+    failures = []
+
+    class Broken:
+        def observe(self, name, attributes):  # type: ignore[no-untyped-def]
+            del name, attributes
+            raise RuntimeError("  sensitive   detail  ")
+
+    isolated = FailureIsolatedObserver(
+        Broken(), failures.append, limits=Limits(max_string_length=8)
+    )
+    isolated.observe("event", {})
+    assert failures[0].exception_type == "RuntimeE"
+    assert failures[0].message == "sensitiv"
+
+    fallback_failure = FailureIsolatedObserver(Broken(), lambda failure: 1 / 0)
+    fallback_failure.observe("event", {})

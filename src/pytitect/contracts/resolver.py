@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import Any, Never, cast
 from urllib.parse import unquote, urlsplit
 
 from pytitect.core import JsonValue, validate_json
@@ -120,7 +120,7 @@ class _ResolutionState:
                 except ImportError:
                     self.reject("yaml_unavailable", "install pytitect[contracts] to resolve YAML")
                 try:
-                    loaded = yaml.safe_load(payload)
+                    loaded = yaml.load(payload, Loader=_unique_yaml_loader(yaml))
                 except yaml.YAMLError as error:
                     self.reject("malformed_document", str(error))
             else:
@@ -178,9 +178,15 @@ class _ResolutionState:
         if not siblings:
             return resolved
         walked_siblings = self.walk(siblings, current_file=current_file, depth=depth, stack=stack)
-        if isinstance(resolved, dict) and isinstance(walked_siblings, dict):
-            return {**resolved, **walked_siblings}
-        return {"allOf": [resolved], **cast(dict[str, JsonValue], walked_siblings)}
+        if not isinstance(walked_siblings, dict):
+            self.reject("invalid_siblings", "$ref siblings must form an object", reference)
+        if "allOf" in walked_siblings:
+            self.reject(
+                "incompatible_siblings",
+                "$ref siblings must not provide their own allOf composition",
+                reference,
+            )
+        return {"allOf": [resolved, walked_siblings]}
 
     def target(self, reference: str, *, current_file: Path) -> tuple[Path, str]:
         parsed = urlsplit(reference)
@@ -199,12 +205,16 @@ class _ResolutionState:
             self.reject("invalid_pointer", "JSON Pointer must start with '/'", reference)
         current: JsonValue = document
         for raw_token in pointer[1:].split("/"):
-            token = raw_token.replace("~1", "/").replace("~0", "~")
+            token = self.decode_pointer_token(raw_token, reference)
             if isinstance(current, dict) and token in current:
                 current = current[token]
             elif isinstance(current, list):
                 try:
-                    if token.startswith("+") or (token.startswith("0") and token != "0"):
+                    if token != "0" and (
+                        not token
+                        or token[0] == "0"
+                        or any(character < "0" or character > "9" for character in token)
+                    ):
                         raise ValueError
                     current = current[int(token)]
                 except (ValueError, IndexError):
@@ -213,7 +223,21 @@ class _ResolutionState:
                 self.reject("missing_pointer", "JSON Pointer does not exist", reference)
         return current
 
-    def reject(self, code: str, detail: str, reference: str | None = None) -> None:
+    def decode_pointer_token(self, token: str, reference: str) -> str:
+        output: list[str] = []
+        index = 0
+        while index < len(token):
+            if token[index] != "~":
+                output.append(token[index])
+                index += 1
+                continue
+            if index + 1 >= len(token) or token[index + 1] not in {"0", "1"}:
+                self.reject("invalid_pointer", "JSON Pointer contains an invalid escape", reference)
+            output.append("~" if token[index + 1] == "0" else "/")
+            index += 2
+        return "".join(output)
+
+    def reject(self, code: str, detail: str, reference: str | None = None) -> Never:
         raise _ExpectedFailure(RefRejected(code, detail, reference))
 
 
@@ -228,3 +252,22 @@ def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
 
 def _invalid_number(value: str) -> None:
     raise ValueError(f"non-finite JSON number: {value}")
+
+
+def _unique_yaml_loader(yaml: Any) -> Any:
+    safe_loader = yaml.SafeLoader
+
+    class UniqueSafeLoader(safe_loader):  # type: ignore[misc, valid-type]
+        pass
+
+    def construct_mapping(loader: object, node: object, deep: bool = False) -> object:
+        mapping: dict[object, object] = {}
+        for key_node, value_node in node.value:  # type: ignore[attr-defined]
+            key = loader.construct_object(key_node, deep=deep)  # type: ignore[attr-defined]
+            if key in mapping:
+                raise ValueError(f"duplicate YAML key: {key}")
+            mapping[key] = loader.construct_object(value_node, deep=deep)  # type: ignore[attr-defined]
+        return mapping
+
+    UniqueSafeLoader.add_constructor("tag:yaml.org,2002:map", construct_mapping)
+    return UniqueSafeLoader

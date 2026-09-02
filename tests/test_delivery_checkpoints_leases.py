@@ -6,7 +6,15 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from pytitect import OpaqueId
-from pytitect.checkpoints import Checkpoint, CheckpointCoordinator, CheckpointItem
+from pytitect.checkpoints import (
+    AtomicCheckpointConfirmed,
+    AtomicCheckpointCoordinator,
+    Checkpoint,
+    CheckpointItem,
+    DeferredCheckpointCoordinator,
+    StaleCheckpoint,
+    StateCommittedCheckpointUnconfirmed,
+)
 from pytitect.inbox import (
     InboxAccepted,
     InboxDuplicate,
@@ -25,6 +33,7 @@ from pytitect.leases import (
 )
 from pytitect.outbox import (
     Delivered,
+    DeliveryResult,
     InMemoryOutboxStore,
     OneRoundDispatcher,
     OutboxEnvelope,
@@ -37,7 +46,7 @@ from pytitect.outbox import (
 def test_inbox_duplicate_in_progress_abandon_and_expiry() -> None:
     now = datetime(2026, 1, 1, tzinfo=UTC)
     store = InMemoryInboxStore(capacity=2)
-    message = OpaqueId("message-1")
+    message: OpaqueId[object] = OpaqueId("message-1")
     assert isinstance(
         store.begin(message, token="worker-1", now=now, ttl=timedelta(seconds=5)), InboxAccepted
     )
@@ -70,7 +79,7 @@ def test_outbox_one_round_delivered_retry_and_permanent() -> None:
             )
         )
 
-    def handler(envelope: OutboxEnvelope[str]):
+    def handler(envelope: OutboxEnvelope[str]) -> DeliveryResult:
         if envelope.payload == "ok":
             return Delivered()
         if envelope.payload == "retry":
@@ -97,6 +106,9 @@ class MemoryCheckpointStore:
 
     def load(self, stream: str) -> Checkpoint | None:
         return self.values.get(stream)
+
+    def load_for_update(self, stream: str) -> Checkpoint | None:
+        return self.load(stream)
 
     def advance(self, stream: str, *, expected: Checkpoint | None, checkpoint: Checkpoint) -> bool:
         if self.values.get(stream) != expected:
@@ -127,21 +139,50 @@ class FakeTransaction:
         self.callbacks.append(callback)
 
 
-def test_checkpoint_only_advances_after_commit_and_replays_after_callback_failure() -> None:
+def test_atomic_checkpoint_advances_inside_transaction() -> None:
     store = MemoryCheckpointStore()
-    transaction = FakeTransaction(commit=False)
+    transaction = FakeTransaction()
     state: list[int] = []
-    coordinator = CheckpointCoordinator[int](store, transaction)
+    coordinator = AtomicCheckpointCoordinator[int](store, transaction)
     result = coordinator.apply(
         stream="orders",
         items=iter([CheckpointItem(Checkpoint(b"1"), 10)]),
         apply_state=state.append,
     )
-    assert result.applied == 1 and state == [10]
-    assert store.load("orders") is None
-    assert len(transaction.callbacks) == 1
-    transaction.callbacks[0]()
+    assert isinstance(result, AtomicCheckpointConfirmed)
+    assert result.batch.applied == 1 and state == [10]
     assert store.load("orders") == Checkpoint(b"1")
+    assert transaction.callbacks == []
+
+
+def test_atomic_stale_and_deferred_uncertainty_are_typed() -> None:
+    class StaleStore(MemoryCheckpointStore):
+        def advance(
+            self,
+            stream: str,
+            *,
+            expected: Checkpoint | None,
+            checkpoint: Checkpoint,
+        ) -> bool:
+            return False
+
+    atomic = AtomicCheckpointCoordinator[int](StaleStore(), FakeTransaction())
+    stale = atomic.apply(
+        stream="orders",
+        items=iter([CheckpointItem(Checkpoint(b"1"), 10)]),
+        apply_state=lambda payload: None,
+    )
+    assert isinstance(stale, StaleCheckpoint)
+
+    state: list[int] = []
+    deferred = DeferredCheckpointCoordinator[int](StaleStore(), FakeTransaction())
+    uncertain = deferred.apply(
+        stream="orders",
+        items=iter([CheckpointItem(Checkpoint(b"1"), 10)]),
+        apply_state=state.append,
+    )
+    assert isinstance(uncertain, StateCommittedCheckpointUnconfirmed)
+    assert state == [10]
 
 
 def test_leases_takeover_monotonic_fencing_and_atomic_stale_rejection() -> None:
@@ -160,8 +201,8 @@ def test_leases_takeover_monotonic_fencing_and_atomic_stale_rejection() -> None:
     )
     state: list[str] = []
 
-    def locked(resource: str, compare: Callable[[LeaseAuthority | None], Any]):
-        def compare_current():
+    def locked(resource: str, compare: Callable[[LeaseAuthority | None], Any]) -> Any:
+        def compare_current() -> Any:
             current = store.current(resource)
             authority = (
                 LeaseAuthority(current.owner, current.fencing_token, current.expires_at)

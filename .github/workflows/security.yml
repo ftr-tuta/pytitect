@@ -18,7 +18,9 @@ jobs:
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
-      - run: uv export --all-extras --no-dev --frozen --output-file /tmp/requirements.txt
+      - run: >-
+          uv export --all-extras --no-dev --no-emit-project --frozen
+          --output-file /tmp/requirements.txt
       - run: uvx pip-audit --requirement /tmp/requirements.txt
 
   codeql:

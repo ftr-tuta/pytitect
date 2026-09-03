@@ -24,3 +24,4 @@ deleting them. Every plan has a UTC cutoff, a positive finite batch size, dry-ru
 An atomic checkpoint coordinator applies state and advances the checkpoint inside one transaction.
 The deferred coordinator applies state first and attempts advancement only after that transaction
 commits. If deferred advancement fails, the older checkpoint remains and replay must be safe.
+See the explicit outcome and recovery semantics in [Checkpoint commit boundaries](checkpoints.md).

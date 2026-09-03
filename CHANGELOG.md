@@ -20,6 +20,11 @@ Semantic Versioning with the prerelease rules documented in `docs/versioning.md`
   capability/header/limit registries, executable fixtures, and a deterministic SHA-256 manifest.
 - Validated W3C Trace Context parsing/rendering, explicit `RequestContext` and DRF adapters, and a
   fixture-compatible pseudonymous observability vocabulary.
+- A synthetic Django/PostgreSQL reference project that installs the exact candidate wheel and
+  exercises atomic mutations, receipts, outbox dispatch, retention, crash recovery, and shared
+  legacy/versioned routes.
+- Executable documentation, generated compatibility and API-stability references, plus separate
+  aggregate coverage gates for the whole package and its highest-risk contracts.
 
 ### Changed
 
@@ -38,6 +43,8 @@ Semantic Versioning with the prerelease rules documented in `docs/versioning.md`
   an explicit purge or archive plan removes them, keeping duplicate message IDs blocked.
 - Routine idempotency, mutation-batch, and receipt cleanup excludes uncertain outcomes unless
   explicitly opted in.
+- Opaque cursor encoding rejects empty payloads so every emitted cursor is accepted by the strict
+  decoder.
 
 ## 1.0.0rc1 - candidate not materialized
 

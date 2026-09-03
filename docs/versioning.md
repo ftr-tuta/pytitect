@@ -8,5 +8,6 @@ Public symbols are recorded in `tool/public-api.txt`. Removing or changing one r
 version decision and changelog entry.
 
 The source candidate is `1.0.0rc1`, whose derivable repository tag is `v1.0.0-rc.1`. Candidate
-preparation does not imply materialization: until that protected tag, GitHub Release, and PyPI
-artifact exist, `v0.9.0a1` remains the latest public distribution.
+preparation does not imply materialization: until that protected tag and GitHub Release assets
+exist, `v0.9.0a1` remains the latest public distribution. PyPI and TestPyPI publication are
+prohibited until separately and explicitly authorized.

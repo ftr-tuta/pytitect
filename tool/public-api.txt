@@ -1,4 +1,4 @@
-# Generated intentionally by: python tool/api_snapshot.py --print
+# Generated intentionally for Pytitect 1.0.0rc1 by: python tool/api_snapshot.py --print
 pytitect.canaries:Canary
 pytitect.canaries:CanaryCrashed
 pytitect.canaries:CanaryFailed

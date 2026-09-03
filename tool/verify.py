@@ -70,8 +70,11 @@ def main() -> int:
     run(python, "-m", "ruff", "check", ".")
     run(python, "-m", "mypy")
     run(python, "-m", "pytest")
+    run(python, "tool/coverage_gate.py")
+    run(python, "tool/docs_quality.py")
     run(python, "tool/api_snapshot.py")
     run(python, "tool/sync_bundle.py")
+    run(python, "tool/reference_project.py")
     run(python, "tool/optional_imports.py")
     forbidden = [
         path
@@ -84,8 +87,11 @@ def main() -> int:
     if not args.skip_build:
         with tempfile.TemporaryDirectory(prefix="pytitect-dist-") as directory:
             run(python, "-m", "build", "--no-isolation", "--outdir", directory)
-            artifacts = sorted(str(path) for path in Path(directory).iterdir())
+            paths = sorted(Path(directory).iterdir())
+            artifacts = [str(path) for path in paths]
             run(python, "-m", "twine", "check", *artifacts)
+            wheel = next(path for path in paths if path.suffix == ".whl")
+            run(python, "tool/package_smoke.py", str(wheel))
     print("Pytitect verification completed successfully.")
     return 0
 

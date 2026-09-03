@@ -275,12 +275,13 @@ def test_mutation_batch_resumes_one_worker_after_a_committed_prefix() -> None:
     now = timezone.now()
 
     class Clock:
-        value = now
+        def __init__(self, value):  # type: ignore[no-untyped-def]
+            self.value = value
 
         def now(self):  # type: ignore[no-untyped-def]
             return self.value
 
-    clock = Clock()
+    clock = Clock(now)
     batches = DjangoMutationBatchStore.from_model(
         MutationBatchRecord,
         using="default",

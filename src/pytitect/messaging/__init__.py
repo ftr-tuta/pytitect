@@ -23,6 +23,7 @@ from pytitect.messaging.results import (
     DeliveryTerminated,
     PublicationConfirmed,
     PublicationRejected,
+    PublicationResult,
     PublicationRetryable,
 )
 from pytitect.messaging.routing import Route, RoutingTable
@@ -45,6 +46,7 @@ __all__ = [
     "MessageTypeRegistry",
     "PublicationConfirmed",
     "PublicationRejected",
+    "PublicationResult",
     "PublicationRetryable",
     "Route",
     "RoutingTable",

@@ -3,6 +3,8 @@
 from pytitect.sqlalchemy.models import (
     CheckpointModelMixin,
     InboxModelMixin,
+    JobModelMixin,
+    JobScheduleModelMixin,
     LeaseColumnsMixin,
     OutboxModelMixin,
     ProcessManagerModelMixin,
@@ -25,6 +27,8 @@ from pytitect.sqlalchemy.uow import SQLAlchemyUnitOfWorkFactory
 __all__ = [
     "CheckpointModelMixin",
     "InboxModelMixin",
+    "JobModelMixin",
+    "JobScheduleModelMixin",
     "LeaseColumnsMixin",
     "ModelBundle",
     "OutboxModelMixin",

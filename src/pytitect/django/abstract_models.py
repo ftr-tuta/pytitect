@@ -157,3 +157,39 @@ class AbstractProcessTimerModel(models.Model):
 
     class Meta:
         abstract = True
+
+
+class AbstractJobModel(models.Model):
+    job_id: models.CharField[str, str] = models.CharField(max_length=255)
+    task: models.CharField[str, str] = models.CharField(max_length=255)
+    payload: models.JSONField[object, object] = models.JSONField()
+    run_at: models.DateTimeField[datetime, datetime] = models.DateTimeField()
+    attempt: models.PositiveIntegerField[int, int] = models.PositiveIntegerField(default=0)
+    max_attempts: models.PositiveIntegerField[int, int] = models.PositiveIntegerField()
+    state: models.CharField[str, str] = models.CharField(max_length=32)
+    claim_id: models.CharField[str, str] = models.CharField(max_length=64, null=True)
+    claimed_until: models.DateTimeField[datetime, datetime] = models.DateTimeField(null=True)
+    fencing_token: models.PositiveBigIntegerField[int, int] = models.PositiveBigIntegerField(
+        default=0
+    )
+    last_failure: models.TextField[str, str] = models.TextField(null=True)
+
+    class Meta:
+        abstract = True
+
+
+class AbstractJobScheduleModel(models.Model):
+    schedule_id: models.CharField[str, str] = models.CharField(max_length=255)
+    task: models.CharField[str, str] = models.CharField(max_length=255)
+    payload: models.JSONField[object, object] = models.JSONField()
+    next_run: models.DateTimeField[datetime, datetime] = models.DateTimeField()
+    kind: models.CharField[str, str] = models.CharField(max_length=32)
+    interval_seconds: models.PositiveBigIntegerField[int, int] = models.PositiveBigIntegerField(
+        null=True
+    )
+    policy: models.CharField[str, str] = models.CharField(max_length=255, null=True)
+    sequence: models.PositiveBigIntegerField[int, int] = models.PositiveBigIntegerField(default=0)
+    active: models.BooleanField[bool, bool] = models.BooleanField(default=True)
+
+    class Meta:
+        abstract = True

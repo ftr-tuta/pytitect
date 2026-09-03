@@ -92,3 +92,27 @@ class ProcessTimerModelMixin(LeaseColumnsMixin):
     effect_kind: Mapped[str] = mapped_column(String(32), nullable=False)
     effect_name: Mapped[str] = mapped_column(String(255), nullable=False)
     effect_payload: Mapped[dict[str, Any]] = mapped_column(nullable=False)
+
+
+@declarative_mixin
+class JobModelMixin(LeaseColumnsMixin, TerminalStateColumnsMixin):
+    job_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    task: Mapped[str] = mapped_column(String(255), nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(nullable=False)
+    run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    attempt: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    max_attempts: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+
+
+@declarative_mixin
+class JobScheduleModelMixin:
+    schedule_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    task: Mapped[str] = mapped_column(String(255), nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(nullable=False)
+    next_run: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    interval_seconds: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    policy: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    sequence: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

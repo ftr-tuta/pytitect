@@ -45,6 +45,10 @@ security = [
   "http-message-signatures>=2.0.1,<3",
 ]
 sync = ["rfc8785>=0.1.4,<1", "cryptography>=46,<51"]
+sqlalchemy = [
+  "SQLAlchemy[asyncio]>=2.0.52,<2.1",
+  "psycopg[binary,pool]>=3.3.5,<4",
+]
 
 [dependency-groups]
 dev = [

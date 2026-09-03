@@ -126,3 +126,124 @@ class AbstractGenerationModel(models.Model):
 
     class Meta:
         abstract = True
+
+
+class AbstractProcessManagerModel(models.Model):
+    process_name: models.CharField[str, str] = models.CharField(max_length=255)
+    instance_id: models.CharField[str, str] = models.CharField(max_length=255)
+    version: models.PositiveBigIntegerField[int, int] = models.PositiveBigIntegerField()
+    status: models.CharField[str, str] = models.CharField(max_length=32)
+    state: models.JSONField[object, object] = models.JSONField()
+    updated_at: models.DateTimeField[datetime, datetime] = models.DateTimeField()
+
+    class Meta:
+        abstract = True
+
+
+class AbstractProcessTimerModel(models.Model):
+    process_name: models.CharField[str, str] = models.CharField(max_length=255)
+    instance_id: models.CharField[str, str] = models.CharField(max_length=255)
+    timer_id: models.CharField[str, str] = models.CharField(max_length=255)
+    due_at: models.DateTimeField[datetime, datetime] = models.DateTimeField()
+    effect_id: models.CharField[str, str] = models.CharField(max_length=255)
+    effect_kind: models.CharField[str, str] = models.CharField(max_length=32)
+    effect_name: models.CharField[str, str] = models.CharField(max_length=255)
+    effect_payload: models.JSONField[object, object] = models.JSONField()
+    claim_id: models.CharField[str, str] = models.CharField(max_length=64, null=True)
+    claimed_until: models.DateTimeField[datetime, datetime] = models.DateTimeField(null=True)
+    fencing_token: models.PositiveBigIntegerField[int, int] = models.PositiveBigIntegerField(
+        default=0
+    )
+
+    class Meta:
+        abstract = True
+
+
+class AbstractJobModel(models.Model):
+    job_id: models.CharField[str, str] = models.CharField(max_length=255)
+    task: models.CharField[str, str] = models.CharField(max_length=255)
+    payload: models.JSONField[object, object] = models.JSONField()
+    run_at: models.DateTimeField[datetime, datetime] = models.DateTimeField()
+    attempt: models.PositiveIntegerField[int, int] = models.PositiveIntegerField(default=0)
+    max_attempts: models.PositiveIntegerField[int, int] = models.PositiveIntegerField()
+    state: models.CharField[str, str] = models.CharField(max_length=32)
+    claim_id: models.CharField[str, str] = models.CharField(max_length=64, null=True)
+    claimed_until: models.DateTimeField[datetime, datetime] = models.DateTimeField(null=True)
+    fencing_token: models.PositiveBigIntegerField[int, int] = models.PositiveBigIntegerField(
+        default=0
+    )
+    last_failure: models.TextField[str, str] = models.TextField(null=True)
+
+    class Meta:
+        abstract = True
+
+
+class AbstractJobScheduleModel(models.Model):
+    schedule_id: models.CharField[str, str] = models.CharField(max_length=255)
+    task: models.CharField[str, str] = models.CharField(max_length=255)
+    payload: models.JSONField[object, object] = models.JSONField()
+    next_run: models.DateTimeField[datetime, datetime] = models.DateTimeField()
+    kind: models.CharField[str, str] = models.CharField(max_length=32)
+    interval_seconds: models.PositiveBigIntegerField[int, int] = models.PositiveBigIntegerField(
+        null=True
+    )
+    policy: models.CharField[str, str] = models.CharField(max_length=255, null=True)
+    sequence: models.PositiveBigIntegerField[int, int] = models.PositiveBigIntegerField(default=0)
+    active: models.BooleanField[bool, bool] = models.BooleanField(default=True)
+
+    class Meta:
+        abstract = True
+
+
+class AbstractProjectionModel(models.Model):
+    projection_name: models.CharField[str, str] = models.CharField(max_length=255)
+    partition: models.CharField[str, str] = models.CharField(max_length=255)
+    version: models.PositiveBigIntegerField[int, int] = models.PositiveBigIntegerField()
+    checkpoint: models.PositiveBigIntegerField[int, int] = models.PositiveBigIntegerField(default=0)
+    state: models.JSONField[object, object] = models.JSONField()
+
+    class Meta:
+        abstract = True
+
+
+class AbstractProjectionRebuildModel(models.Model):
+    run_id: models.CharField[str, str] = models.CharField(max_length=255)
+    projection_name: models.CharField[str, str] = models.CharField(max_length=255)
+    partition: models.CharField[str, str] = models.CharField(max_length=255)
+    projection_version: models.PositiveBigIntegerField[int, int] = models.PositiveBigIntegerField()
+    through_position: models.PositiveBigIntegerField[int, int] = models.PositiveBigIntegerField()
+    batch_size: models.PositiveIntegerField[int, int] = models.PositiveIntegerField()
+    next_position: models.PositiveBigIntegerField[int, int] = models.PositiveBigIntegerField(
+        default=0
+    )
+    state: models.JSONField[object, object] = models.JSONField()
+    status: models.CharField[str, str] = models.CharField(max_length=32)
+
+    class Meta:
+        abstract = True
+
+
+class AbstractEventModel(models.Model):
+    category: models.CharField[str, str] = models.CharField(max_length=255)
+    stream_id: models.CharField[str, str] = models.CharField(max_length=255)
+    stream_version: models.PositiveBigIntegerField[int, int] = models.PositiveBigIntegerField()
+    global_position: models.PositiveBigIntegerField[int, int] = models.PositiveBigIntegerField()
+    event_id: models.CharField[str, str] = models.CharField(max_length=255)
+    event_type: models.CharField[str, str] = models.CharField(max_length=255)
+    payload: models.JSONField[object, object] = models.JSONField()
+    occurred_at: models.DateTimeField[datetime, datetime] = models.DateTimeField()
+    event_metadata: models.JSONField[object, object] = models.JSONField(default=dict)
+
+    class Meta:
+        abstract = True
+
+
+class AbstractSnapshotModel(models.Model):
+    category: models.CharField[str, str] = models.CharField(max_length=255)
+    stream_id: models.CharField[str, str] = models.CharField(max_length=255)
+    version: models.PositiveBigIntegerField[int, int] = models.PositiveBigIntegerField()
+    state: models.JSONField[object, object] = models.JSONField()
+    created_at: models.DateTimeField[datetime, datetime] = models.DateTimeField()
+
+    class Meta:
+        abstract = True

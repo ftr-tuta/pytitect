@@ -1,0 +1,9 @@
+{
+  "profile": "titect-message/1",
+  "cloudEvents": "1.0.2",
+  "delivery": "at-least-once",
+  "contentTypes": ["application/json"],
+  "routingField": null,
+  "orderedProfile": false,
+  "directSqsPublication": false
+}

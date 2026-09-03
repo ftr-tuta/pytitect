@@ -1,0 +1,105 @@
+name: Event platform expanded matrix
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  candidate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.11.7"
+      - run: uv sync --all-extras --frozen
+      - run: uv build
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: event-platform-candidate
+          path: dist/*.whl
+
+  postgres:
+    needs: candidate
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ["15", "16", "17", "18"]
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:${{ matrix.postgres }}
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: pytitect_event_platform
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: event-platform-candidate
+          path: candidate-dist
+      - run: python -m pip install candidate-dist/*.whl "psycopg[binary]>=3.3.5,<4"
+      - env:
+          TEST_POSTGRES_DSN: postgresql://postgres:postgres@localhost:5432/pytitect_event_platform
+        run: python -m pytest -m postgres tests/test_postgresql_leases.py
+
+  nats:
+    needs: candidate
+    runs-on: ubuntu-24.04
+    services:
+      nats:
+        image: nats:2.14.5
+        ports: ["4222:4222"]
+        options: --health-cmd "nats-server --signal ldm=/var/run/nats/nats.pid || true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: event-platform-candidate
+          path: candidate-dist
+      - run: python -m pip install candidate-dist/*.whl "nats-py>=2.15,<3" pytest
+      - run: python -m pytest tests/test_nats_adapter.py tests/test_aio_runtime.py
+
+  localstack:
+    needs: candidate
+    runs-on: ubuntu-24.04
+    services:
+      localstack:
+        image: localstack/localstack:4.14.0
+        env:
+          SERVICES: events,sqs
+        ports: ["4566:4566"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: event-platform-candidate
+          path: candidate-dist
+      - run: python -m pip install candidate-dist/*.whl "boto3>=1.43.88,<2" pytest
+      - env:
+          AWS_ACCESS_KEY_ID: test
+          AWS_SECRET_ACCESS_KEY: test
+          AWS_DEFAULT_REGION: us-east-1
+          LOCALSTACK_ENDPOINT: http://localhost:4566
+        run: python -m pytest tests/test_aws_adapter.py tests/test_fault_injection.py

@@ -51,13 +51,14 @@ This table is generated from `pyproject.toml` and checked by `tool/docs_quality.
 | Surface | Declared support | CI evidence |
 | --- | --- | --- |
 | CPython | `{python}` | 3.12, 3.13, and 3.14 unit matrix |
-| Django | `{django}` | 5.2 minimum/latest jobs and PostgreSQL consumers |
+| Django | `{django}` | 5.2, 6.0, and 6.1 jobs plus PostgreSQL consumers |
 | Django REST Framework | `{drf}` | minimum/latest adapter jobs |
 | drf-spectacular | `{spectacular}` | contracts smoke and schema tests |
 
 Optional dependencies remain isolated: the core imports with none installed. `pytitect.aio` is a
-reserved namespace; 1.0 has no FastAPI, ASGI, or async-store implementation. The package wheel used
-by the extras smokes is also installed unchanged in the Django canary and reference project.
+Preview namespace with explicit bounded runtimes and separate async ports. Framework, database, and
+transport adapters are Low-level and never load through the package root. The exact package wheel
+used by extras smokes is also installed unchanged in framework and infrastructure canaries.
 """
 
 
@@ -118,15 +119,30 @@ def check_removed_symbols() -> None:
 
 def _stability(entry: str) -> str:
     module, symbol = entry.split(":", 1)
-    if module == "pytitect.canaries" or symbol.endswith("Harness"):
+    if module in {"pytitect.canaries", "pytitect.testing"} or symbol.endswith("Harness"):
         return "Testing"
-    if module == "pytitect.sync":
+    if module in {
+        "pytitect.aio",
+        "pytitect.application",
+        "pytitect.event_sourcing",
+        "pytitect.jobs",
+        "pytitect.messaging",
+        "pytitect.operations",
+        "pytitect.processes",
+        "pytitect.projections",
+        "pytitect.sync",
+    }:
         return "Preview"
     if module in {
+        "pytitect.aws",
         "pytitect.contracts",
         "pytitect.django",
         "pytitect.drf",
+        "pytitect.fastapi",
+        "pytitect.faststream_nats",
+        "pytitect.nats",
         "pytitect.security",
+        "pytitect.sqlalchemy",
     }:
         return "Low-level"
     return "Stable"

@@ -8,14 +8,22 @@ import subprocess
 import sys
 
 OPTIONAL_PREFIXES = (
+    "asgiref",
+    "boto3",
+    "botocore",
     "django",
     "rest_framework",
     "drf_spectacular",
+    "fastapi",
+    "faststream",
     "yaml",
     "rfc8785",
     "jwt",
     "cryptography",
     "http_message_signatures",
+    "nats",
+    "sqlalchemy",
+    "starlette",
 )
 
 

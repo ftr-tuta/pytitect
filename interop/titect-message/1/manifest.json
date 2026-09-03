@@ -1,0 +1,31 @@
+{
+  "algorithm": "sha256",
+  "digest": "f1b9ef9f3d6677cc70ba589c3e086d75f6b5bb1250ac805aa193aafcc4326ef0",
+  "files": [
+    {
+      "path": "asyncapi.json",
+      "sha256": "37bab1c0a0bd16743e76449c1afa01b4db82d3a646b074758f432f18c67cf4c0",
+      "size": 475
+    },
+    {
+      "path": "capabilities.json",
+      "sha256": "916ca04018719305b3aa9e5193467ad8c2845ef19626867be6643f7b7918dd37",
+      "size": 217
+    },
+    {
+      "path": "fixtures/negative/unknown-field.json",
+      "sha256": "bd10bb6b3853c1ee4737b9267988f65ef3347bf043fe56b9e39b2064e6a4a18a",
+      "size": 299
+    },
+    {
+      "path": "fixtures/positive/message.json",
+      "sha256": "091f73fcb8a2c6102c648aac81e28b86d2c1adc7b91921d5f58f481681dd3dd1",
+      "size": 384
+    },
+    {
+      "path": "schema.json",
+      "sha256": "4561f2677f01b431f8a080f2f00b26e7b0604a016b4826cbcfce8a8a5672855e",
+      "size": 1073
+    }
+  ]
+}

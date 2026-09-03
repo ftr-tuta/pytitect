@@ -22,6 +22,18 @@ RISK_FILES = {
     "src/pytitect/security/digest.py",
     "src/pytitect/security/encoding.py",
 }
+EVENT_PLATFORM_FILES = {
+    "src/pytitect/aio/quarantine.py",
+    "src/pytitect/aio/runtime.py",
+    "src/pytitect/aio/uow.py",
+    "src/pytitect/application.py",
+    "src/pytitect/aws/transport.py",
+    "src/pytitect/event_sourcing.py",
+    "src/pytitect/jobs.py",
+    "src/pytitect/nats/transport.py",
+    "src/pytitect/processes.py",
+    "src/pytitect/projections.py",
+}
 
 
 def _aggregate(files: dict[str, Any], selected: Callable[[str], bool]) -> float:
@@ -60,6 +72,15 @@ def main() -> int:
             _aggregate(
                 files,
                 lambda path: path in RISK_FILES or path.startswith("src/pytitect/sync/"),
+            ),
+            95.0,
+        ),
+        "event platform critical paths": (
+            _aggregate(
+                files,
+                lambda path: (
+                    path in EVENT_PLATFORM_FILES or path.startswith("src/pytitect/messaging/")
+                ),
             ),
             95.0,
         ),

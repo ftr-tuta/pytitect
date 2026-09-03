@@ -26,6 +26,15 @@ COMBINATIONS = {
         "OpaqueCursorCodec({'k': b'x' * 32}, nonce_factory=lambda size: b'n' * size).encode("
         "b'p', dataset='d', partition='p', kid='k', algorithm='A256GCM')"
     ),
+    "fastapi": "import pytitect.fastapi",
+    "sqlalchemy": "import pytitect.sqlalchemy",
+    "nats": "import pytitect.nats",
+    "aws": "import pytitect.aws",
+    "faststream-nats": "import pytitect.faststream_nats",
+    "django,sqlalchemy,nats,aws,fastapi,faststream-nats": (
+        "import pytitect.django, pytitect.sqlalchemy, pytitect.nats, pytitect.aws, "
+        "pytitect.fastapi, pytitect.faststream_nats"
+    ),
     "drf,contracts": "import pytitect.drf, pytitect.contracts.spectacular",
 }
 

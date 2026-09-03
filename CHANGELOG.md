@@ -5,6 +5,14 @@ Semantic Versioning with the prerelease rules documented in `docs/versioning.md`
 
 ## Unreleased
 
+## 1.0.0 - 2026-09-03
+
+### Changed
+
+- No functional changes since `1.0.0rc1`.
+- Promoted the validated release candidate to the stable package version, classifier, and release
+  manifest identity.
+
 ## 1.0.0rc1 - 2026-09-03
 
 ### Added

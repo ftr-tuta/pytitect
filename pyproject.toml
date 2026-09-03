@@ -50,6 +50,7 @@ sqlalchemy = [
   "psycopg[binary,pool]>=3.3.5,<4",
 ]
 nats = ["nats-py>=2.15,<3"]
+aws = ["boto3>=1.43.88,<2"]
 
 [dependency-groups]
 dev = [

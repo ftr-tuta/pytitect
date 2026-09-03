@@ -52,6 +52,7 @@ sqlalchemy = [
 nats = ["nats-py>=2.15,<3"]
 aws = ["boto3>=1.43.88,<2"]
 fastapi = ["fastapi>=0.141,<0.142"]
+faststream-nats = ["faststream[nats]>=0.7.5,<0.8"]
 
 [dependency-groups]
 dev = [

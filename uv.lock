@@ -639,6 +639,24 @@ wheels = [
 ]
 
 [[package]]
+name = "fast-depends"
+version = "3.0.8"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f8/6d/787a21ca8043a8fdb737cf28f645e94a46fc30b44a31de54573299156bad/fast_depends-3.0.8.tar.gz", hash = "sha256:896b16f79a512b6ea1df721b0aa1708a192a06f964be6597e01fcf5412559101", size = 18382, upload-time = "2026-03-02T19:54:28.649Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1d/1d/e4843e4eeb65f51447b8c22d200d12d8f94f27c97e77bb7162515cc8d61f/fast_depends-3.0.8-py3-none-any.whl", hash = "sha256:4c52c8a3907bca46d43e70e4364d6d016872d9a3aae4bc0c1c85e72e0a6a21c7", size = 25507, upload-time = "2026-03-02T19:54:27.594Z" },
+]
+
+[package.optional-dependencies]
+pydantic = [
+    { name = "pydantic" },
+]
+
+[[package]]
 name = "fastapi"
 version = "0.141.1"
 source = { registry = "https://pypi.org/simple" }
@@ -652,6 +670,25 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/8a/02/91e3416a8fdd715abb903a952a6bec7cdd8d14eed55d415fc8595524c319/fastapi-0.141.1.tar.gz", hash = "sha256:e8822fc40db1e1858054d7a949a888695bc9bdce70139178e33bd2871a453ca1", size = 425799, upload-time = "2026-07-29T17:18:05.568Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/cb/03/10388a42375ee7e4ac9b94eb2c5c569c8b5795e377e701c9ac3ad63de890/fastapi-0.141.1-py3-none-any.whl", hash = "sha256:bfb91aa2d334c61cb35ba9a116fc123b3d3df31640b801cf57a7a78ec3f603b3", size = 131954, upload-time = "2026-07-29T17:18:04.364Z" },
+]
+
+[[package]]
+name = "faststream"
+version = "0.7.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "fast-depends", extra = ["pydantic"] },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9b/0c/2b233cb66e8f776de24d8aa0f8fd0055fdeea65bff6daa902cb95f46e103/faststream-0.7.5.tar.gz", hash = "sha256:a8185385e4fe64f2f0420c8cd38a55a183f4599e5343b77bf16abc9f62ccaadf", size = 340955, upload-time = "2026-08-27T08:54:16.298Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/56/45/4f96ecafb94707364e283defca94798b47484d69bb77c15175592673568d/faststream-0.7.5-py3-none-any.whl", hash = "sha256:27d1bb3a2945cbd914b326d9b78d3e51d6678293835562be962a8a2189abe20b", size = 569912, upload-time = "2026-08-27T08:54:14.739Z" },
+]
+
+[package.optional-dependencies]
+nats = [
+    { name = "nats-py" },
 ]
 
 [[package]]
@@ -1496,6 +1533,9 @@ drf = [
 fastapi = [
     { name = "fastapi" },
 ]
+faststream-nats = [
+    { name = "faststream", extra = ["nats"] },
+]
 nats = [
     { name = "nats-py" },
 ]
@@ -1543,6 +1583,7 @@ requires-dist = [
     { name = "djangorestframework", marker = "extra == 'drf'", specifier = ">=3.16,<4" },
     { name = "drf-spectacular", marker = "extra == 'contracts'", specifier = ">=0.28,<1" },
     { name = "fastapi", marker = "extra == 'fastapi'", specifier = ">=0.141,<0.142" },
+    { name = "faststream", extras = ["nats"], marker = "extra == 'faststream-nats'", specifier = ">=0.7.5,<0.8" },
     { name = "http-message-signatures", marker = "extra == 'security'", specifier = ">=2.0.1,<3" },
     { name = "http-message-signatures", marker = "extra == 'signed-http'", specifier = ">=2.0.1,<3" },
     { name = "nats-py", marker = "extra == 'nats'", specifier = ">=2.15,<3" },
@@ -1556,7 +1597,7 @@ requires-dist = [
     { name = "rfc8785", marker = "extra == 'sync'", specifier = ">=0.1.4,<1" },
     { name = "sqlalchemy", extras = ["asyncio"], marker = "extra == 'sqlalchemy'", specifier = ">=2.0.52,<2.1" },
 ]
-provides-extras = ["aws", "canonical-json", "contracts", "django", "dpop", "drf", "fastapi", "nats", "security", "signed-http", "sqlalchemy", "sync"]
+provides-extras = ["aws", "canonical-json", "contracts", "django", "dpop", "drf", "fastapi", "faststream-nats", "nats", "security", "signed-http", "sqlalchemy", "sync"]
 
 [package.metadata.requires-dev]
 dev = [

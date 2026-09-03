@@ -19,6 +19,7 @@ from pytitect.core import (
     canonical_json_bytes,
     sha256_fingerprint,
 )
+from pytitect.maintenance import MaintenanceSummary, PurgeIdempotencyPlan
 
 T = TypeVar("T")
 
@@ -301,6 +302,31 @@ class InMemoryIdempotencyStore[T]:
             self._tokens.pop(token)
             return ReservationAbandoned()
 
+    def purge(self, plan: PurgeIdempotencyPlan) -> MaintenanceSummary:
+        with self._lock:
+            selected = sorted(
+                (
+                    (identity, entry)
+                    for identity, entry in self._entries.items()
+                    if entry.expires_at <= plan.cutoff
+                    and (entry.state != "uncertain" or plan.include_uncertain)
+                ),
+                key=lambda item: (
+                    item[1].expires_at,
+                    item[0][0].namespace,
+                    item[0][0].subject,
+                    item[0][0].operation,
+                    item[0][1],
+                ),
+            )[: plan.batch_size]
+            if not plan.dry_run:
+                for identity, entry in selected:
+                    self._entries.pop(identity)
+                    self._tokens.pop(entry.token, None)
+            return MaintenanceSummary(
+                len(selected), 0 if plan.dry_run else len(selected), plan.dry_run
+            )
+
     def _executing(self, token: ReservationToken, now: datetime) -> _Entry[T] | None:
         identity = self._tokens.get(token)
         if identity is None:
@@ -316,7 +342,11 @@ class InMemoryIdempotencyStore[T]:
         return entry
 
     def _purge(self, now: datetime) -> None:
-        expired = [identity for identity, entry in self._entries.items() if entry.expires_at <= now]
+        expired = [
+            identity
+            for identity, entry in self._entries.items()
+            if entry.expires_at <= now and entry.state != "uncertain"
+        ]
         for identity in expired:
             entry = self._entries.pop(identity)
             self._tokens.pop(entry.token, None)

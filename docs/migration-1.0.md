@@ -40,5 +40,18 @@ Replace `CheckpointCoordinator` with `AtomicCheckpointCoordinator` or
 `DjangoFencedCommitFactory` with `DjangoFencedCommit`. `DjangoLeaseStore.from_model()` no longer
 accepts the unused `decode_resource` argument.
 
+## Outbox terminal retention
+
+Pass an explicit UTC `at` instant to `OutboxStore.delivered()` and `OutboxStore.failed()`. Delivered
+and terminally failed messages now remain in the outbox and continue to block duplicate message IDs.
+Add nullable `delivered_at` and `failed_at` fields to concrete models, then use
+`PurgeDeliveredOutboxPlan` or `ArchiveFailedOutboxPlan` for bounded cleanup.
+
+Backfill `failed_at` for retained pre-1.0 failures only from an authoritative consumer timestamp.
+Rows with a null `failed_at` remain excluded from archival until the consumer resolves that value.
+
+Archive callbacks must write durable rows using the database alias supplied by
+`DjangoRetentionMaintenance`. Do not perform external effects in that transaction.
+
 Use the public store harnesses in tests for each custom store or callback adapter. Model-backed
 Django stores must also be exercised on PostgreSQL; SQLite cannot validate the locking contract.

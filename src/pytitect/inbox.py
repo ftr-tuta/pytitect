@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from typing import Protocol
 
 from pytitect.core import OpaqueId
+from pytitect.maintenance import MaintenanceSummary, PurgeInboxPlan
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,6 +148,30 @@ class InMemoryInboxStore:
                 return False
             self._entries.pop(identity)
             return True
+
+    def purge(self, plan: PurgeInboxPlan) -> MaintenanceSummary:
+        with self._lock:
+            selected = sorted(
+                (
+                    (identity, entry)
+                    for identity, entry in self._entries.items()
+                    if (entry.completed_at is not None and entry.completed_at <= plan.cutoff)
+                    or (entry.completed_at is None and entry.expires_at <= plan.cutoff)
+                ),
+                key=lambda item: (
+                    item[1].completed_at or item[1].expires_at,
+                    item[0][0].namespace,
+                    item[0][0].source,
+                    item[0][0].consumer,
+                    str(item[0][1]),
+                ),
+            )[: plan.batch_size]
+            if not plan.dry_run:
+                for identity, _ in selected:
+                    self._entries.pop(identity)
+            return MaintenanceSummary(
+                len(selected), 0 if plan.dry_run else len(selected), plan.dry_run
+            )
 
 
 class InboxStoreHarness:

@@ -26,6 +26,7 @@ from pytitect.idempotency import (
     ReservationRenewed,
     Uncertain,
 )
+from pytitect.maintenance import MaintenanceSummary, PurgeIdempotencyPlan
 from pytitect.security.canonical import canonical_json
 
 PayloadT = TypeVar("PayloadT")
@@ -397,6 +398,32 @@ class InMemoryMutationBatchStore[ResultT]:
             self._tokens.pop(current.token, None)
             return MutationBatchMarkedUncertain(current.retention_expires_at)
 
+    def purge(self, plan: PurgeIdempotencyPlan) -> MaintenanceSummary:
+        states = {MutationBatchState.COMPLETED}
+        if plan.include_uncertain:
+            states.add(MutationBatchState.UNCERTAIN)
+        with self._lock:
+            selected = sorted(
+                (
+                    (identity, entry)
+                    for identity, entry in self._entries.items()
+                    if entry.state in states
+                    and entry.retention_expires_at is not None
+                    and entry.retention_expires_at <= plan.cutoff
+                ),
+                key=lambda item: (
+                    item[1].retention_expires_at,
+                    item[0][0],
+                    item[0][1],
+                ),
+            )[: plan.batch_size]
+            if not plan.dry_run:
+                for identity, _ in selected:
+                    self._entries.pop(identity)
+            return MaintenanceSummary(
+                len(selected), 0 if plan.dry_run else len(selected), plan.dry_run
+            )
+
     def _active(
         self, lease: MutationBatchLease[ResultT], now: datetime
     ) -> _StoredBatch[ResultT] | None:
@@ -440,7 +467,7 @@ class InMemoryMutationBatchStore[ResultT]:
         expired = [
             identity
             for identity, entry in self._entries.items()
-            if entry.state in {MutationBatchState.COMPLETED, MutationBatchState.UNCERTAIN}
+            if entry.state is MutationBatchState.COMPLETED
             and entry.retention_expires_at is not None
             and entry.retention_expires_at <= now
         ]

@@ -114,14 +114,17 @@ def test_callback_adapters_conform_to_public_harnesses() -> None:
                 checked(using),
                 memory.claim(now=now, limit=limit, claim_ttl=claim_ttl),
             )[1],
-            delivered=lambda claim, *, using: (checked(using), memory.delivered(claim))[1],
+            delivered=lambda claim, *, at, using: (
+                checked(using),
+                memory.delivered(claim, at=at),
+            )[1],
             retry=lambda claim, *, available_at, using: (
                 checked(using),
                 memory.retry(claim, available_at=available_at),
             )[1],
-            failed=lambda claim, *, reason, using: (
+            failed=lambda claim, *, reason, at, using: (
                 checked(using),
-                memory.failed(claim, reason=reason),
+                memory.failed(claim, reason=reason, at=at),
             )[1],
         )
 

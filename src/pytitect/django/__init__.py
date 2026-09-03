@@ -2,6 +2,12 @@
 
 from pytitect.django.checks import register_checks
 from pytitect.django.leases import DjangoFencedCommit
+from pytitect.django.maintenance import (
+    DjangoRetentionMaintenance,
+    DurableOutboxArchive,
+    RetentionIndexModels,
+    build_retention_index_check,
+)
 from pytitect.django.stores import (
     DjangoCheckpointStore,
     DjangoGenerationStore,
@@ -31,9 +37,13 @@ __all__ = [
     "DjangoOutboxStore",
     "DjangoReceiptStore",
     "DjangoReplayStore",
+    "DjangoRetentionMaintenance",
     "DjangoTransactionBoundary",
     "DjangoTransactionalOperation",
+    "DurableOutboxArchive",
+    "RetentionIndexModels",
     "TransactionalOperationCommitted",
     "TransactionalOperationRolledBack",
+    "build_retention_index_check",
     "register_checks",
 ]

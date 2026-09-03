@@ -22,6 +22,7 @@ MODULES = (
     "pytitect.idempotency",
     "pytitect.inbox",
     "pytitect.leases",
+    "pytitect.maintenance",
     "pytitect.observability",
     "pytitect.outbox",
     "pytitect.receipts",

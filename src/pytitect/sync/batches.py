@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import StrEnum
 from typing import Any, Protocol, TypeVar, cast
 
@@ -13,11 +13,13 @@ from pytitect.core import JsonValue
 from pytitect.idempotency import (
     Conflict,
     Execute,
+    IdempotencyPolicy,
     IdempotencyScope,
     IdempotencyStore,
     InProgress,
     Replay,
     RequestFingerprint,
+    ReservationCompleted,
     Uncertain,
 )
 from pytitect.security.canonical import canonical_json
@@ -151,11 +153,11 @@ class MutationBatchCoordinator[PayloadT, ResultT]:
         policy: BatchPolicy,
         mutate: Callable[[BatchItem[PayloadT], str], ResultT],
         now: datetime,
-        ttl: timedelta,
+        idempotency_policy: IdempotencyPolicy,
         namespace: str = "sync",
     ) -> BatchResult[ResultT]:
-        if not batch_id or not namespace or ttl <= timedelta(0):
-            raise ValueError("batch_id, namespace, and a positive ttl are required")
+        if not batch_id or not namespace:
+            raise ValueError("batch_id and namespace are required")
         _validate_items(items, self._limits)
         envelope_scope = IdempotencyScope(namespace, batch_id, "mutation-batch")
         envelope_fp = _fingerprint(
@@ -169,7 +171,11 @@ class MutationBatchCoordinator[PayloadT, ResultT]:
             try:
                 with self._transaction.atomic():
                     envelope = self._envelopes.reserve(
-                        envelope_scope, batch_id, envelope_fp, now=now, ttl=ttl
+                        envelope_scope,
+                        batch_id,
+                        envelope_fp,
+                        now=now,
+                        lease_ttl=idempotency_policy.execution_lease_ttl,
                     )
                     if isinstance(envelope, Replay):
                         return BatchReplay(envelope.value)
@@ -183,14 +189,18 @@ class MutationBatchCoordinator[PayloadT, ResultT]:
                         items,
                         mutate,
                         now=now,
-                        ttl=ttl,
+                        idempotency_policy=idempotency_policy,
                         namespace=namespace,
                     )
             except _RollbackBatch as failure:
                 return failure.result
         if policy is BatchPolicy.PER_ITEM:
             envelope = self._envelopes.reserve(
-                envelope_scope, batch_id, envelope_fp, now=now, ttl=ttl
+                envelope_scope,
+                batch_id,
+                envelope_fp,
+                now=now,
+                lease_ttl=idempotency_policy.execution_lease_ttl,
             )
             if isinstance(envelope, Replay):
                 return BatchReplay(envelope.value)
@@ -199,7 +209,13 @@ class MutationBatchCoordinator[PayloadT, ResultT]:
                 return early
             assert isinstance(envelope, Execute)
             return self._per_item(
-                envelope, batch_id, items, mutate, now=now, ttl=ttl, namespace=namespace
+                envelope,
+                batch_id,
+                items,
+                mutate,
+                now=now,
+                idempotency_policy=idempotency_policy,
+                namespace=namespace,
             )
         raise ValueError("unsupported batch policy")
 
@@ -211,14 +227,20 @@ class MutationBatchCoordinator[PayloadT, ResultT]:
         mutate: Callable[[BatchItem[PayloadT], str], ResultT],
         *,
         now: datetime,
-        ttl: timedelta,
+        idempotency_policy: IdempotencyPolicy,
         namespace: str,
     ) -> BatchResult[ResultT]:
         reservations: list[
             tuple[BatchItem[PayloadT], Execute | Replay[BatchItemReceipt[ResultT]]]
         ] = []
         for item in items:
-            decision = self._reserve_item(batch_id, item, now=now, ttl=ttl, namespace=namespace)
+            decision = self._reserve_item(
+                batch_id,
+                item,
+                now=now,
+                idempotency_policy=idempotency_policy,
+                namespace=namespace,
+            )
             early = _early(decision, item_id=item.item_id)
             if early is not None:
                 raise _RollbackBatch(early)
@@ -232,11 +254,27 @@ class MutationBatchCoordinator[PayloadT, ResultT]:
                 )
                 continue
             receipt = BatchItemReceipt(item.item_id, mutate(item, self._using))
-            if not self._items.complete(reservation.token, receipt, now=now):
+            if not isinstance(
+                self._items.complete(
+                    reservation.token,
+                    receipt,
+                    now=now,
+                    retention_ttl=idempotency_policy.result_retention_ttl,
+                ),
+                ReservationCompleted,
+            ):
                 raise _RollbackBatch(BatchUncertain(item.item_id, "item CAS failed"))
             receipts.append(receipt)
         ordered = tuple(receipts)
-        if not self._envelopes.complete(envelope.token, ordered, now=now):
+        if not isinstance(
+            self._envelopes.complete(
+                envelope.token,
+                ordered,
+                now=now,
+                retention_ttl=idempotency_policy.result_retention_ttl,
+            ),
+            ReservationCompleted,
+        ):
             raise _RollbackBatch(BatchUncertain(None, "envelope CAS failed"))
         return BatchCommitted(ordered)
 
@@ -248,7 +286,7 @@ class MutationBatchCoordinator[PayloadT, ResultT]:
         mutate: Callable[[BatchItem[PayloadT], str], ResultT],
         *,
         now: datetime,
-        ttl: timedelta,
+        idempotency_policy: IdempotencyPolicy,
         namespace: str,
     ) -> BatchResult[ResultT]:
         receipts: list[BatchItemReceipt[ResultT]] = []
@@ -256,7 +294,11 @@ class MutationBatchCoordinator[PayloadT, ResultT]:
             try:
                 with self._transaction.atomic():
                     decision = self._reserve_item(
-                        batch_id, item, now=now, ttl=ttl, namespace=namespace
+                        batch_id,
+                        item,
+                        now=now,
+                        idempotency_policy=idempotency_policy,
+                        namespace=namespace,
                     )
                     if isinstance(decision, Replay):
                         receipts.append(
@@ -268,7 +310,15 @@ class MutationBatchCoordinator[PayloadT, ResultT]:
                         raise _RollbackBatch(early)
                     assert isinstance(decision, Execute)
                     receipt = BatchItemReceipt(item.item_id, mutate(item, self._using))
-                    if not self._items.complete(decision.token, receipt, now=now):
+                    if not isinstance(
+                        self._items.complete(
+                            decision.token,
+                            receipt,
+                            now=now,
+                            retention_ttl=idempotency_policy.result_retention_ttl,
+                        ),
+                        ReservationCompleted,
+                    ):
                         raise _RollbackBatch(
                             BatchUncertain(item.item_id, "item CAS failed; mutation rolled back")
                         )
@@ -276,7 +326,15 @@ class MutationBatchCoordinator[PayloadT, ResultT]:
             except _RollbackBatch as failure:
                 return failure.result
         ordered = tuple(receipts)
-        if not self._envelopes.complete(envelope.token, ordered, now=now):
+        if not isinstance(
+            self._envelopes.complete(
+                envelope.token,
+                ordered,
+                now=now,
+                retention_ttl=idempotency_policy.result_retention_ttl,
+            ),
+            ReservationCompleted,
+        ):
             return BatchItemsCommittedEnvelopeUnconfirmed(ordered)
         return BatchCommitted(ordered)
 
@@ -286,7 +344,7 @@ class MutationBatchCoordinator[PayloadT, ResultT]:
         item: BatchItem[PayloadT],
         *,
         now: datetime,
-        ttl: timedelta,
+        idempotency_policy: IdempotencyPolicy,
         namespace: str,
     ) -> Execute | Replay[BatchItemReceipt[ResultT]] | Conflict | InProgress | Uncertain:
         scope = IdempotencyScope(namespace, batch_id, f"mutation-item:{item.item_id}")
@@ -295,7 +353,7 @@ class MutationBatchCoordinator[PayloadT, ResultT]:
             item.item_id,
             _fingerprint(cast(JsonValue, item.payload)),
             now=now,
-            ttl=ttl,
+            lease_ttl=idempotency_policy.execution_lease_ttl,
         )
 
 

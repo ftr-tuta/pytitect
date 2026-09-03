@@ -18,12 +18,20 @@ automatic protocol selection.
 from datetime import timedelta
 
 from pytitect import PytitectRuntime
-from pytitect.idempotency import IdempotencyCoordinator, InMemoryIdempotencyStore
+from pytitect.idempotency import (
+    IdempotencyCoordinator,
+    IdempotencyPolicy,
+    InMemoryIdempotencyStore,
+)
 
 runtime = PytitectRuntime()
 coordinator = IdempotencyCoordinator(
     InMemoryIdempotencyStore[dict[str, object]](),
-    ttl=timedelta(minutes=10),
+    policy=IdempotencyPolicy(
+        execution_lease_ttl=timedelta(minutes=1),
+        result_retention_ttl=timedelta(days=1),
+        uncertainty_retention_ttl=timedelta(days=7),
+    ),
     clock=runtime.clock,
 )
 ```

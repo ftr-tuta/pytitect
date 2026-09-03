@@ -15,7 +15,8 @@ calling cursor crypto methods.
 order, envelope idempotency, and per-item idempotency. `ALL_OR_NOTHING` reserves every item before
 the first mutation in one caller-selected transaction. `PER_ITEM` commits each item independently,
 replays completed items on resume, and reports `BatchItemsCommittedEnvelopeUnconfirmed` when only
-the final envelope CAS is unconfirmed.
+the final envelope CAS is unconfirmed. Callers supply an `IdempotencyPolicy`; execution leases and
+stored receipts therefore have independent lifetimes.
 
 `DatasetDependencyGraph` provides finite cycle validation, dependency closure, and stable
 topological order. `GenerationGuard` compares a locked generation and performs the protected

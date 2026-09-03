@@ -38,6 +38,24 @@ class IdempotencyScope:
 class ReservationToken:
     value: str
 
+    def __post_init__(self) -> None:
+        if not self.value:
+            raise ValueError("reservation tokens must not be empty")
+
+
+@dataclass(frozen=True, slots=True)
+class IdempotencyPolicy:
+    """Independent execution and terminal-state retention periods."""
+
+    execution_lease_ttl: timedelta
+    result_retention_ttl: timedelta
+    uncertainty_retention_ttl: timedelta
+
+    def __post_init__(self) -> None:
+        for name in self.__dataclass_fields__:
+            if getattr(self, name) <= timedelta(0):
+                raise ValueError(f"{name} must be positive")
+
 
 @dataclass(frozen=True, slots=True)
 class RequestFingerprint:
@@ -81,6 +99,37 @@ class Uncertain:
 type IdempotencyDecision[T] = Execute | Replay[T] | Conflict | InProgress | Uncertain
 
 
+@dataclass(frozen=True, slots=True)
+class ReservationRenewed:
+    expires_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ReservationCompleted:
+    retained_until: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ReservationMarkedUncertain:
+    retained_until: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ReservationAbandoned:
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class StaleReservation:
+    reason: str = "reservation is absent, expired, or no longer executing"
+
+
+type RenewReservationResult = ReservationRenewed | StaleReservation
+type CompleteReservationResult = ReservationCompleted | StaleReservation
+type MarkUncertainResult = ReservationMarkedUncertain | StaleReservation
+type AbandonReservationResult = ReservationAbandoned | StaleReservation
+
+
 class IdempotencyStore(Protocol[T]):
     def reserve(
         self,
@@ -89,12 +138,41 @@ class IdempotencyStore(Protocol[T]):
         fingerprint: RequestFingerprint,
         *,
         now: datetime,
-        ttl: timedelta,
+        lease_ttl: timedelta,
     ) -> IdempotencyDecision[T]: ...
 
-    def complete(self, token: ReservationToken, value: T, *, now: datetime) -> bool: ...
+    def renew(
+        self,
+        token: ReservationToken,
+        *,
+        now: datetime,
+        lease_ttl: timedelta,
+    ) -> RenewReservationResult: ...
 
-    def mark_uncertain(self, token: ReservationToken, reason: str, *, now: datetime) -> bool: ...
+    def complete(
+        self,
+        token: ReservationToken,
+        value: T,
+        *,
+        now: datetime,
+        retention_ttl: timedelta,
+    ) -> CompleteReservationResult: ...
+
+    def mark_uncertain(
+        self,
+        token: ReservationToken,
+        reason: str,
+        *,
+        now: datetime,
+        retention_ttl: timedelta,
+    ) -> MarkUncertainResult: ...
+
+    def abandon(
+        self,
+        token: ReservationToken,
+        *,
+        now: datetime,
+    ) -> AbandonReservationResult: ...
 
 
 @dataclass(slots=True)
@@ -125,13 +203,12 @@ class InMemoryIdempotencyStore[T]:
         fingerprint: RequestFingerprint,
         *,
         now: datetime,
-        ttl: timedelta,
+        lease_ttl: timedelta,
     ) -> IdempotencyDecision[T]:
         _utc(now)
         if not key:
             raise ValueError("idempotency key must be supplied by the consumer")
-        if ttl <= timedelta(0):
-            raise ValueError("ttl must be positive")
+        _positive(lease_ttl, "lease_ttl")
         identity = (scope, key)
         with self._lock:
             self._purge(now)
@@ -148,37 +225,95 @@ class InMemoryIdempotencyStore[T]:
             if len(self._entries) >= self._capacity:
                 return Uncertain("idempotency capacity exceeded; no reservation was made")
             token = ReservationToken(uuid.uuid4().hex)
-            self._entries[identity] = _Entry(token, fingerprint, now + ttl)
+            self._entries[identity] = _Entry(token, fingerprint, now + lease_ttl)
             self._tokens[token] = identity
             return Execute(token)
 
-    def complete(self, token: ReservationToken, value: T, *, now: datetime) -> bool:
+    def renew(
+        self,
+        token: ReservationToken,
+        *,
+        now: datetime,
+        lease_ttl: timedelta,
+    ) -> RenewReservationResult:
         _utc(now)
+        _positive(lease_ttl, "lease_ttl")
         with self._lock:
-            identity = self._tokens.get(token)
-            if identity is None:
-                return False
-            entry = self._entries.get(identity)
-            if entry is None or entry.token != token or entry.expires_at <= now:
-                return False
+            entry = self._executing(token, now)
+            if entry is None:
+                return StaleReservation()
+            entry.expires_at = now + lease_ttl
+            return ReservationRenewed(entry.expires_at)
+
+    def complete(
+        self,
+        token: ReservationToken,
+        value: T,
+        *,
+        now: datetime,
+        retention_ttl: timedelta,
+    ) -> CompleteReservationResult:
+        _utc(now)
+        _positive(retention_ttl, "retention_ttl")
+        with self._lock:
+            entry = self._executing(token, now)
+            if entry is None:
+                return StaleReservation()
             entry.state = "completed"
             entry.value = value
-            return True
+            entry.expires_at = now + retention_ttl
+            return ReservationCompleted(entry.expires_at)
 
-    def mark_uncertain(self, token: ReservationToken, reason: str, *, now: datetime) -> bool:
+    def mark_uncertain(
+        self,
+        token: ReservationToken,
+        reason: str,
+        *,
+        now: datetime,
+        retention_ttl: timedelta,
+    ) -> MarkUncertainResult:
         _utc(now)
         if not reason:
             raise ValueError("an uncertainty reason is required")
+        _positive(retention_ttl, "retention_ttl")
         with self._lock:
-            identity = self._tokens.get(token)
-            if identity is None:
-                return False
-            entry = self._entries.get(identity)
-            if entry is None or entry.token != token or entry.expires_at <= now:
-                return False
+            entry = self._executing(token, now)
+            if entry is None:
+                return StaleReservation()
             entry.state = "uncertain"
             entry.reason = reason
-            return True
+            entry.expires_at = now + retention_ttl
+            return ReservationMarkedUncertain(entry.expires_at)
+
+    def abandon(
+        self,
+        token: ReservationToken,
+        *,
+        now: datetime,
+    ) -> AbandonReservationResult:
+        _utc(now)
+        with self._lock:
+            identity = self._tokens.get(token)
+            entry = self._executing(token, now)
+            if identity is None or entry is None:
+                return StaleReservation()
+            self._entries.pop(identity)
+            self._tokens.pop(token)
+            return ReservationAbandoned()
+
+    def _executing(self, token: ReservationToken, now: datetime) -> _Entry[T] | None:
+        identity = self._tokens.get(token)
+        if identity is None:
+            return None
+        entry = self._entries.get(identity)
+        if (
+            entry is None
+            or entry.token != token
+            or entry.state != "reserved"
+            or entry.expires_at <= now
+        ):
+            return None
+        return entry
 
     def _purge(self, now: datetime) -> None:
         expired = [identity for identity, entry in self._entries.items() if entry.expires_at <= now]
@@ -190,12 +325,8 @@ class InMemoryIdempotencyStore[T]:
 @dataclass(frozen=True, slots=True)
 class IdempotencyCoordinator[T]:
     store: IdempotencyStore[T]
-    ttl: timedelta
+    policy: IdempotencyPolicy
     clock: Clock = field(default_factory=SystemClock)
-
-    def __post_init__(self) -> None:
-        if self.ttl <= timedelta(0):
-            raise ValueError("ttl must be positive")
 
     def begin(
         self,
@@ -204,13 +335,39 @@ class IdempotencyCoordinator[T]:
         key: str,
         fingerprint: RequestFingerprint,
     ) -> IdempotencyDecision[T]:
-        return self.store.reserve(scope, key, fingerprint, now=self.clock.now(), ttl=self.ttl)
+        return self.store.reserve(
+            scope,
+            key,
+            fingerprint,
+            now=self.clock.now(),
+            lease_ttl=self.policy.execution_lease_ttl,
+        )
 
-    def complete(self, token: ReservationToken, value: T) -> bool:
-        return self.store.complete(token, value, now=self.clock.now())
+    def renew(self, token: ReservationToken) -> RenewReservationResult:
+        return self.store.renew(
+            token,
+            now=self.clock.now(),
+            lease_ttl=self.policy.execution_lease_ttl,
+        )
 
-    def uncertain(self, token: ReservationToken, reason: str) -> bool:
-        return self.store.mark_uncertain(token, reason, now=self.clock.now())
+    def complete(self, token: ReservationToken, value: T) -> CompleteReservationResult:
+        return self.store.complete(
+            token,
+            value,
+            now=self.clock.now(),
+            retention_ttl=self.policy.result_retention_ttl,
+        )
+
+    def uncertain(self, token: ReservationToken, reason: str) -> MarkUncertainResult:
+        return self.store.mark_uncertain(
+            token,
+            reason,
+            now=self.clock.now(),
+            retention_ttl=self.policy.uncertainty_retention_ttl,
+        )
+
+    def abandon(self, token: ReservationToken) -> AbandonReservationResult:
+        return self.store.abandon(token, now=self.clock.now())
 
 
 class IdempotencyStoreHarness[T]:
@@ -221,25 +378,41 @@ class IdempotencyStoreHarness[T]:
 
     def exercise(self, *, value: T, now: datetime) -> None:
         store = self._factory()
+        lease_ttl = timedelta(minutes=1)
+        retention_ttl = timedelta(hours=1)
         scope = IdempotencyScope("test", "subject", "operation")
         first = RequestFingerprint.from_json({"value": 1})
         different = RequestFingerprint.from_json({"value": 2})
-        decision = store.reserve(scope, "consumer-key", first, now=now, ttl=timedelta(minutes=1))
+        decision = store.reserve(scope, "consumer-key", first, now=now, lease_ttl=lease_ttl)
         if not isinstance(decision, Execute):
             raise AssertionError("first reservation must execute")
         if not isinstance(
-            store.reserve(scope, "consumer-key", first, now=now, ttl=timedelta(minutes=1)),
+            store.reserve(scope, "consumer-key", first, now=now, lease_ttl=lease_ttl),
             InProgress,
         ):
             raise AssertionError("concurrent reservation must be in progress")
         if not isinstance(
-            store.reserve(scope, "consumer-key", different, now=now, ttl=timedelta(minutes=1)),
+            store.reserve(scope, "consumer-key", different, now=now, lease_ttl=lease_ttl),
             Conflict,
         ):
             raise AssertionError("different fingerprint must conflict")
-        if not store.complete(decision.token, value, now=now):
+        if not isinstance(
+            store.complete(
+                decision.token,
+                value,
+                now=now,
+                retention_ttl=retention_ttl,
+            ),
+            ReservationCompleted,
+        ):
             raise AssertionError("valid reservation must complete")
-        replay = store.reserve(scope, "consumer-key", first, now=now, ttl=timedelta(minutes=1))
+        replay = store.reserve(
+            scope,
+            "consumer-key",
+            first,
+            now=now + lease_ttl,
+            lease_ttl=lease_ttl,
+        )
         if not isinstance(replay, Replay) or replay.value != value:
             raise AssertionError("completed reservation must replay")
 
@@ -247,3 +420,8 @@ class IdempotencyStoreHarness[T]:
 def _utc(value: datetime) -> None:
     if value.tzinfo is None or value.utcoffset() != timedelta(0):
         raise ValueError("idempotency timestamps must be timezone-aware UTC")
+
+
+def _positive(value: timedelta, name: str) -> None:
+    if value <= timedelta(0):
+        raise ValueError(f"{name} must be positive")

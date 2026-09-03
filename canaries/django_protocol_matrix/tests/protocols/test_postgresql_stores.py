@@ -29,6 +29,7 @@ from pytitect.django import (
 )
 from pytitect.idempotency import (
     Execute,
+    IdempotencyPolicy,
     IdempotencyScope,
     InProgress,
     Replay,
@@ -287,7 +288,9 @@ def test_transactional_operation_rolls_back_every_owned_write_and_replays() -> N
         idempotency=idempotency,
         receipts=receipts,
         outbox=outbox,
-        ttl=timedelta(minutes=1),
+        idempotency_policy=IdempotencyPolicy(
+            timedelta(minutes=1), timedelta(hours=1), timedelta(days=1)
+        ),
         clock=Clock(),
     )
     scope = IdempotencyScope("canary", "subject", "transactional")
@@ -296,7 +299,9 @@ def test_transactional_operation_rolls_back_every_owned_write_and_replays() -> N
     outbox.add(OutboxEnvelope(OpaqueId("duplicate"), "topic", {}, now, now))
 
     def mutate(using):  # type: ignore[no-untyped-def]
-        row = DomainMutation.objects.using(using).create(protocol="transactional", value=7)
+        row = DomainMutation.objects.using(using).create(
+            protocol="transactional", value=7
+        )
         return {"mutation_id": row.pk}
 
     def receipt(value):  # type: ignore[no-untyped-def]
@@ -369,9 +374,7 @@ def test_uncertain_receipt_reconciliation_has_one_concurrent_winner() -> None:
         encode_result=_json,
         decode_result=_json,
     )
-    uncertain = MutationReceipt(
-        OpaqueId("uncertain"), ReceiptState.UNCERTAIN, now, now
-    )
+    uncertain = MutationReceipt(OpaqueId("uncertain"), ReceiptState.UNCERTAIN, now, now)
     assert store.add(uncertain)
     reconcile_barrier = Barrier(2)
 
@@ -383,7 +386,9 @@ def test_uncertain_receipt_reconciliation_has_one_concurrent_winner() -> None:
                 uncertain.receipt_id,
                 target,
                 at=now + timedelta(seconds=1),
-                result={"confirmed": True} if target is ReceiptState.COMPLETED else None,
+                result={"confirmed": True}
+                if target is ReceiptState.COMPLETED
+                else None,
             )
         finally:
             close_old_connections()
@@ -396,5 +401,11 @@ def test_uncertain_receipt_reconciliation_has_one_concurrent_winner() -> None:
                 executor.submit(reconcile, ReceiptState.REJECTED),
             )
         ]
-    assert sum(isinstance(result, (ConfirmedCompleted, ConfirmedRejected)) for result in results) == 1
+    assert (
+        sum(
+            isinstance(result, (ConfirmedCompleted, ConfirmedRejected))
+            for result in results
+        )
+        == 1
+    )
     assert sum(isinstance(result, StillUncertain) for result in results) == 1

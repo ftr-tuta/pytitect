@@ -22,7 +22,18 @@ from pytitect.django import (
     TransactionalOperationCommitted,
     TransactionalOperationRolledBack,
 )
-from pytitect.idempotency import Execute, IdempotencyScope, RequestFingerprint, ReservationToken
+from pytitect.idempotency import (
+    Execute,
+    IdempotencyPolicy,
+    IdempotencyScope,
+    RequestFingerprint,
+    ReservationAbandoned,
+    ReservationCompleted,
+    ReservationMarkedUncertain,
+    ReservationRenewed,
+    ReservationToken,
+    StaleReservation,
+)
 from pytitect.inbox import InboxAccepted
 from pytitect.leases import (
     FencedCommitted,
@@ -47,15 +58,49 @@ def test_callback_stores_always_receive_the_explicit_alias() -> None:
     idempotency = DjangoIdempotencyStore.from_callbacks(
         using="events",
         reserve=lambda *args, using, **kwargs: (record(using), Execute(ReservationToken("t")))[1],
-        complete=lambda *args, using, **kwargs: (record(using), True)[1],
-        mark_uncertain=lambda *args, using, **kwargs: (record(using), True)[1],
+        renew=lambda *args, using, **kwargs: (
+            record(using),
+            ReservationRenewed(now + timedelta(seconds=1)),
+        )[1],
+        complete=lambda *args, using, **kwargs: (
+            record(using),
+            ReservationCompleted(now + timedelta(minutes=1)),
+        )[1],
+        mark_uncertain=lambda *args, using, **kwargs: (
+            record(using),
+            ReservationMarkedUncertain(now + timedelta(minutes=1)),
+        )[1],
+        abandon=lambda *args, using, **kwargs: (record(using), ReservationAbandoned())[1],
     )
     scope = IdempotencyScope("n", "s", "o")
     fingerprint = RequestFingerprint.from_json({"value": 1})
-    decision = idempotency.reserve(scope, "key", fingerprint, now=now, ttl=timedelta(seconds=1))
+    decision = idempotency.reserve(
+        scope, "key", fingerprint, now=now, lease_ttl=timedelta(seconds=1)
+    )
     assert isinstance(decision, Execute)
-    assert idempotency.complete(decision.token, {"ok": True}, now=now)
-    assert idempotency.mark_uncertain(decision.token, "unknown", now=now)
+    assert isinstance(
+        idempotency.renew(decision.token, now=now, lease_ttl=timedelta(seconds=1)),
+        ReservationRenewed,
+    )
+    assert isinstance(
+        idempotency.complete(
+            decision.token,
+            {"ok": True},
+            now=now,
+            retention_ttl=timedelta(minutes=1),
+        ),
+        ReservationCompleted,
+    )
+    assert isinstance(
+        idempotency.mark_uncertain(
+            decision.token,
+            "unknown",
+            now=now,
+            retention_ttl=timedelta(minutes=1),
+        ),
+        ReservationMarkedUncertain,
+    )
+    assert isinstance(idempotency.abandon(decision.token, now=now), ReservationAbandoned)
 
     replay = DjangoReplayStore.from_callbacks(
         using="events",
@@ -187,12 +232,12 @@ def test_django_fenced_and_transactional_commit(monkeypatch: pytest.MonkeyPatch)
 
     class Idempotency:
         using = "events"
-        complete_result = True
+        complete_result: object = ReservationCompleted(now + timedelta(minutes=1))
 
         def reserve(self, *args: Any, **kwargs: Any) -> Execute:
             return Execute(ReservationToken("token"))
 
-        def complete(self, *args: Any, **kwargs: Any) -> bool:
+        def complete(self, *args: Any, **kwargs: Any) -> object:
             return self.complete_result
 
     class Receipts:
@@ -217,7 +262,9 @@ def test_django_fenced_and_transactional_commit(monkeypatch: pytest.MonkeyPatch)
         idempotency=idempotency,
         receipts=Receipts(),
         outbox=outbox,
-        ttl=timedelta(minutes=1),
+        idempotency_policy=IdempotencyPolicy(
+            timedelta(minutes=1), timedelta(hours=1), timedelta(days=1)
+        ),
     )
     result = {"ok": True}
     receipt = MutationReceipt(OpaqueId("receipt"), ReceiptState.COMPLETED, now, now, result=result)
@@ -231,7 +278,7 @@ def test_django_fenced_and_transactional_commit(monkeypatch: pytest.MonkeyPatch)
     )
     assert isinstance(committed, TransactionalOperationCommitted)
     assert committed.outbox_messages == 1
-    idempotency.complete_result = False
+    idempotency.complete_result = StaleReservation()
     rolled_back = operation.execute(
         scope=IdempotencyScope("n", "s", "o"),
         key="other",
@@ -240,7 +287,7 @@ def test_django_fenced_and_transactional_commit(monkeypatch: pytest.MonkeyPatch)
         make_receipt=lambda value: receipt,
     )
     assert isinstance(rolled_back, TransactionalOperationRolledBack)
-    idempotency.complete_result = True
+    idempotency.complete_result = ReservationCompleted(now + timedelta(minutes=1))
     outbox.add_result = OutboxDuplicate()
     outbox_rolled_back = operation.execute(
         scope=IdempotencyScope("n", "s", "o"),
@@ -260,5 +307,7 @@ def test_django_fenced_and_transactional_commit(monkeypatch: pytest.MonkeyPatch)
             idempotency=idempotency,
             receipts=Receipts(),
             outbox=Outbox(),
-            ttl=timedelta(minutes=1),
+            idempotency_policy=IdempotencyPolicy(
+                timedelta(minutes=1), timedelta(hours=1), timedelta(days=1)
+            ),
         )

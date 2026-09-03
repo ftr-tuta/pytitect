@@ -15,6 +15,7 @@ from pytitect.django import (
 )
 from pytitect.idempotency import (
     Conflict,
+    IdempotencyPolicy,
     IdempotencyScope,
     InProgress,
     Replay,
@@ -76,7 +77,11 @@ class MobileMutationView(APIView):
             idempotency=idempotency,
             receipts=receipts,
             outbox=outbox,
-            ttl=timezone.timedelta(minutes=5),
+            idempotency_policy=IdempotencyPolicy(
+                execution_lease_ttl=timezone.timedelta(minutes=5),
+                result_retention_ttl=timezone.timedelta(days=1),
+                uncertainty_retention_ttl=timezone.timedelta(days=7),
+            ),
         )
         receipt_id = OpaqueId(str(uuid4()))
 

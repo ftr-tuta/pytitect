@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from pytitect.idempotency import InMemoryIdempotencyStore
+from pytitect.idempotency import IdempotencyPolicy, InMemoryIdempotencyStore, StaleReservation
 from pytitect.sync import (
     ALL_OR_NOTHING,
     PER_ITEM,
@@ -89,6 +89,13 @@ class GenerationStore:
         return self.value
 
 
+POLICY = IdempotencyPolicy(
+    execution_lease_ttl=timedelta(minutes=1),
+    result_retention_ttl=timedelta(hours=1),
+    uncertainty_retention_ttl=timedelta(days=1),
+)
+
+
 def test_generation_guard() -> None:
     guard = GenerationGuard(GenerationStore(), Transaction())
     assert guard.commit(
@@ -113,7 +120,7 @@ def test_mutation_batches_empty_order_replay_and_envelope_uncertainty() -> None:
         policy=ALL_OR_NOTHING,
         mutate=lambda item, using: calls.append(f"{using}:{item.item_id}") or item.payload,
         now=now,
-        ttl=timedelta(minutes=1),
+        idempotency_policy=POLICY,
     )
     assert isinstance(result, BatchCommitted)
     assert [receipt.item_id for receipt in result.receipts] == ["b", "a"]
@@ -127,14 +134,16 @@ def test_mutation_batches_empty_order_replay_and_envelope_uncertainty() -> None:
         policy=PER_ITEM,
         mutate=lambda item, using: None,
         now=now,
-        ttl=timedelta(minutes=1),
+        idempotency_policy=POLICY,
     )
     assert empty == BatchCommitted(())
 
     class EnvelopeUnconfirmed(InMemoryIdempotencyStore):
-        def complete(self, token, value, *, now):  # type: ignore[no-untyped-def]
-            del token, value, now
-            return False
+        def complete(  # type: ignore[no-untyped-def]
+            self, token, value, *, now, retention_ttl
+        ):
+            del token, value, now, retention_ttl
+            return StaleReservation()
 
     uncertain = MutationBatchCoordinator(
         EnvelopeUnconfirmed(), InMemoryIdempotencyStore(), Transaction(), using="default"
@@ -144,7 +153,7 @@ def test_mutation_batches_empty_order_replay_and_envelope_uncertainty() -> None:
         policy=PER_ITEM,
         mutate=lambda item, using: item.payload,
         now=now,
-        ttl=timedelta(minutes=1),
+        idempotency_policy=POLICY,
     )
     assert isinstance(uncertain, BatchItemsCommittedEnvelopeUnconfirmed)
 
@@ -164,9 +173,11 @@ def test_per_item_cas_failure_rolls_back_that_item() -> None:
                 raise
 
     class ItemUnconfirmed(InMemoryIdempotencyStore):
-        def complete(self, token, value, *, now):  # type: ignore[no-untyped-def]
-            del token, value, now
-            return False
+        def complete(  # type: ignore[no-untyped-def]
+            self, token, value, *, now, retention_ttl
+        ):
+            del token, value, now, retention_ttl
+            return StaleReservation()
 
     result = MutationBatchCoordinator(
         InMemoryIdempotencyStore(), ItemUnconfirmed(), RollingTransaction(), using="default"
@@ -176,7 +187,7 @@ def test_per_item_cas_failure_rolls_back_that_item() -> None:
         policy=PER_ITEM,
         mutate=lambda item, using: mutations.append(item.item_id) or item.payload,
         now=now,
-        ttl=timedelta(minutes=1),
+        idempotency_policy=POLICY,
     )
     assert isinstance(result, BatchUncertain)
     assert mutations == []

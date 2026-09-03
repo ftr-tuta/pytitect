@@ -12,14 +12,23 @@ from typing import Any, TypeVar, cast
 from pytitect.checkpoints import Checkpoint
 from pytitect.core import JsonValue, OpaqueId, validate_json
 from pytitect.idempotency import (
+    AbandonReservationResult,
+    CompleteReservationResult,
     Conflict,
     Execute,
     IdempotencyDecision,
     IdempotencyScope,
     InProgress,
+    MarkUncertainResult,
+    RenewReservationResult,
     Replay,
     RequestFingerprint,
+    ReservationAbandoned,
+    ReservationCompleted,
+    ReservationMarkedUncertain,
+    ReservationRenewed,
     ReservationToken,
+    StaleReservation,
     Uncertain,
 )
 from pytitect.inbox import (
@@ -84,13 +93,17 @@ class DjangoIdempotencyStore[T]:
         *,
         using: str,
         reserve: Callable[..., IdempotencyDecision[T]],
-        complete: Callable[..., bool],
-        mark_uncertain: Callable[..., bool],
+        renew: Callable[..., RenewReservationResult],
+        complete: Callable[..., CompleteReservationResult],
+        mark_uncertain: Callable[..., MarkUncertainResult],
+        abandon: Callable[..., AbandonReservationResult],
     ) -> None:
         self.using = _alias(using)
         self._reserve = reserve
+        self._renew = renew
         self._complete = complete
         self._uncertain = mark_uncertain
+        self._abandon = abandon
 
     @classmethod
     def from_callbacks(
@@ -98,14 +111,18 @@ class DjangoIdempotencyStore[T]:
         *,
         using: str,
         reserve: Callable[..., IdempotencyDecision[T]],
-        complete: Callable[..., bool],
-        mark_uncertain: Callable[..., bool],
+        renew: Callable[..., RenewReservationResult],
+        complete: Callable[..., CompleteReservationResult],
+        mark_uncertain: Callable[..., MarkUncertainResult],
+        abandon: Callable[..., AbandonReservationResult],
     ) -> DjangoIdempotencyStore[T]:
         return cls(
             using=using,
             reserve=reserve,
+            renew=renew,
             complete=complete,
             mark_uncertain=mark_uncertain,
+            abandon=abandon,
         )
 
     @classmethod
@@ -125,13 +142,13 @@ class DjangoIdempotencyStore[T]:
             fingerprint: RequestFingerprint,
             *,
             now: datetime,
-            ttl: timedelta,
+            lease_ttl: timedelta,
             using: str,
         ) -> IdempotencyDecision[T]:
             _postgresql(using)
             _utc(now)
-            if not key or ttl <= timedelta(0):
-                raise ValueError("idempotency key and a positive ttl are required")
+            if not key or lease_ttl <= timedelta(0):
+                raise ValueError("idempotency key and a positive lease_ttl are required")
             from django.db import transaction
 
             lookup = {
@@ -155,7 +172,7 @@ class DjangoIdempotencyStore[T]:
                             "fingerprint": str(fingerprint.value),
                             "reservation_token": token.value,
                             "state": "reserved",
-                            "expires_at": now + ttl,
+                            "expires_at": now + lease_ttl,
                             "value": None,
                             "uncertainty_reason": None,
                             "updated_at": now,
@@ -171,53 +188,117 @@ class DjangoIdempotencyStore[T]:
                     return Uncertain(row.uncertainty_reason or "the prior outcome is unknown")
                 return InProgress(row.expires_at)
 
-        def complete(
+        def renew(
             token: ReservationToken,
-            value: T,
             *,
             now: datetime,
+            lease_ttl: timedelta,
             using: str,
-        ) -> bool:
+        ) -> RenewReservationResult:
             _postgresql(using)
             _utc(now)
-            encoded = encode_value(value)
-            validate_json(encoded)
-            return bool(
+            if lease_ttl <= timedelta(0):
+                raise ValueError("lease_ttl must be positive")
+            expires_at = now + lease_ttl
+            updated = (
                 _manager(model, using)
                 .filter(
                     reservation_token=token.value,
                     state="reserved",
                     expires_at__gt=now,
                 )
-                .update(state="completed", value=encoded, updated_at=now)
+                .update(expires_at=expires_at, updated_at=now)
             )
+            return ReservationRenewed(expires_at) if updated else StaleReservation()
+
+        def complete(
+            token: ReservationToken,
+            value: T,
+            *,
+            now: datetime,
+            retention_ttl: timedelta,
+            using: str,
+        ) -> CompleteReservationResult:
+            _postgresql(using)
+            _utc(now)
+            if retention_ttl <= timedelta(0):
+                raise ValueError("retention_ttl must be positive")
+            encoded = encode_value(value)
+            validate_json(encoded)
+            retained_until = now + retention_ttl
+            updated = (
+                _manager(model, using)
+                .filter(
+                    reservation_token=token.value,
+                    state="reserved",
+                    expires_at__gt=now,
+                )
+                .update(
+                    state="completed",
+                    value=encoded,
+                    expires_at=retained_until,
+                    updated_at=now,
+                )
+            )
+            return ReservationCompleted(retained_until) if updated else StaleReservation()
 
         def mark_uncertain(
             token: ReservationToken,
             reason: str,
             *,
             now: datetime,
+            retention_ttl: timedelta,
             using: str,
-        ) -> bool:
+        ) -> MarkUncertainResult:
             _postgresql(using)
             _utc(now)
             if not reason:
                 raise ValueError("an uncertainty reason is required")
-            return bool(
+            if retention_ttl <= timedelta(0):
+                raise ValueError("retention_ttl must be positive")
+            retained_until = now + retention_ttl
+            updated = (
                 _manager(model, using)
                 .filter(
                     reservation_token=token.value,
                     state="reserved",
                     expires_at__gt=now,
                 )
-                .update(state="uncertain", uncertainty_reason=reason, updated_at=now)
+                .update(
+                    state="uncertain",
+                    uncertainty_reason=reason,
+                    expires_at=retained_until,
+                    updated_at=now,
+                )
             )
+            return ReservationMarkedUncertain(retained_until) if updated else StaleReservation()
+
+        def abandon(
+            token: ReservationToken,
+            *,
+            now: datetime,
+            using: str,
+        ) -> AbandonReservationResult:
+            _postgresql(using)
+            _utc(now)
+            deleted, _ = (
+                _manager(model, using)
+                .filter(
+                    reservation_token=token.value,
+                    state="reserved",
+                    expires_at__gt=now,
+                )
+                .delete()
+            )
+            return ReservationAbandoned() if deleted else StaleReservation()
 
         return cls.from_callbacks(
             using=using,
             reserve=reserve,
+            renew=renew,
             complete=complete,
             mark_uncertain=mark_uncertain,
+            abandon=abandon,
         )
 
     def reserve(
@@ -227,15 +308,65 @@ class DjangoIdempotencyStore[T]:
         fingerprint: RequestFingerprint,
         *,
         now: datetime,
-        ttl: timedelta,
+        lease_ttl: timedelta,
     ) -> IdempotencyDecision[T]:
-        return self._reserve(scope, key, fingerprint, now=now, ttl=ttl, using=self.using)
+        return self._reserve(
+            scope,
+            key,
+            fingerprint,
+            now=now,
+            lease_ttl=lease_ttl,
+            using=self.using,
+        )
 
-    def complete(self, token: ReservationToken, value: T, *, now: datetime) -> bool:
-        return bool(self._complete(token, value, now=now, using=self.using))
+    def renew(
+        self,
+        token: ReservationToken,
+        *,
+        now: datetime,
+        lease_ttl: timedelta,
+    ) -> RenewReservationResult:
+        return self._renew(token, now=now, lease_ttl=lease_ttl, using=self.using)
 
-    def mark_uncertain(self, token: ReservationToken, reason: str, *, now: datetime) -> bool:
-        return bool(self._uncertain(token, reason, now=now, using=self.using))
+    def complete(
+        self,
+        token: ReservationToken,
+        value: T,
+        *,
+        now: datetime,
+        retention_ttl: timedelta,
+    ) -> CompleteReservationResult:
+        return self._complete(
+            token,
+            value,
+            now=now,
+            retention_ttl=retention_ttl,
+            using=self.using,
+        )
+
+    def mark_uncertain(
+        self,
+        token: ReservationToken,
+        reason: str,
+        *,
+        now: datetime,
+        retention_ttl: timedelta,
+    ) -> MarkUncertainResult:
+        return self._uncertain(
+            token,
+            reason,
+            now=now,
+            retention_ttl=retention_ttl,
+            using=self.using,
+        )
+
+    def abandon(
+        self,
+        token: ReservationToken,
+        *,
+        now: datetime,
+    ) -> AbandonReservationResult:
+        return self._abandon(token, now=now, using=self.using)
 
 
 class DjangoReplayStore:

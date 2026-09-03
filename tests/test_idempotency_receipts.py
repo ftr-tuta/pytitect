@@ -10,12 +10,17 @@ from pytitect.idempotency import (
     Conflict,
     Execute,
     IdempotencyCoordinator,
+    IdempotencyPolicy,
     IdempotencyScope,
     IdempotencyStoreHarness,
     InMemoryIdempotencyStore,
     InProgress,
     Replay,
     RequestFingerprint,
+    ReservationAbandoned,
+    ReservationCompleted,
+    ReservationMarkedUncertain,
+    ReservationRenewed,
     Uncertain,
 )
 from pytitect.receipts import (
@@ -33,7 +38,12 @@ def test_idempotency_lifecycle_expiry_and_uncertain() -> None:
 
     clock = ManualClock()
     store = InMemoryIdempotencyStore[dict[str, int]](capacity=2)
-    coordinator = IdempotencyCoordinator(store, timedelta(seconds=10), clock)
+    policy = IdempotencyPolicy(
+        execution_lease_ttl=timedelta(seconds=10),
+        result_retention_ttl=timedelta(minutes=5),
+        uncertainty_retention_ttl=timedelta(minutes=10),
+    )
+    coordinator = IdempotencyCoordinator(store, policy, clock)
     scope = IdempotencyScope("api", "tenant-1", "create")
     fingerprint = RequestFingerprint.from_json({"amount": 1})
     first = coordinator.begin(scope=scope, key="client-key", fingerprint=fingerprint)
@@ -49,20 +59,25 @@ def test_idempotency_lifecycle_expiry_and_uncertain() -> None:
         ),
         Conflict,
     )
-    assert coordinator.complete(first.token, {"id": 7})
+    clock.advance(timedelta(seconds=9))
+    assert isinstance(coordinator.renew(first.token), ReservationRenewed)
+    assert isinstance(coordinator.complete(first.token, {"id": 7}), ReservationCompleted)
     replay = coordinator.begin(scope=scope, key="client-key", fingerprint=fingerprint)
     assert replay == Replay({"id": 7})
 
     other = coordinator.begin(scope=scope, key="other", fingerprint=fingerprint)
     assert isinstance(other, Execute)
-    assert coordinator.uncertain(other.token, "effect committed, response lost")
+    assert isinstance(
+        coordinator.uncertain(other.token, "effect committed, response lost"),
+        ReservationMarkedUncertain,
+    )
     assert isinstance(
         coordinator.begin(scope=scope, key="other", fingerprint=fingerprint), Uncertain
     )
-    clock.advance(timedelta(seconds=11))
-    assert isinstance(
-        coordinator.begin(scope=scope, key="client-key", fingerprint=fingerprint), Execute
-    )
+    clock.advance(timedelta(minutes=6))
+    reopened = coordinator.begin(scope=scope, key="client-key", fingerprint=fingerprint)
+    assert isinstance(reopened, Execute)
+    assert isinstance(coordinator.abandon(reopened.token), ReservationAbandoned)
     with pytest.raises(ValueError):
         coordinator.begin(scope=scope, key="", fingerprint=fingerprint)
 
@@ -77,7 +92,15 @@ def test_idempotency_first_reservation_is_atomic() -> None:
 
     def reserve() -> None:
         barrier.wait()
-        outcomes.append(store.reserve(scope, "key", fingerprint, now=now, ttl=timedelta(minutes=1)))
+        outcomes.append(
+            store.reserve(
+                scope,
+                "key",
+                fingerprint,
+                now=now,
+                lease_ttl=timedelta(minutes=1),
+            )
+        )
 
     threads = [threading.Thread(target=reserve) for _ in range(8)]
     for thread in threads:

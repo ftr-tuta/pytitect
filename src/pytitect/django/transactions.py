@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
-from datetime import timedelta
 from typing import Any, cast
 
 from pytitect.core import Clock, SystemClock
@@ -13,10 +12,12 @@ from pytitect.idempotency import (
     Conflict,
     Execute,
     IdempotencyDecision,
+    IdempotencyPolicy,
     IdempotencyScope,
     InProgress,
     Replay,
     RequestFingerprint,
+    ReservationCompleted,
     Uncertain,
 )
 from pytitect.outbox import OutboxAdded, OutboxEnvelope
@@ -80,11 +81,11 @@ class DjangoTransactionalOperation[ResultT, OutboxPayloadT]:
         idempotency: object,
         receipts: object,
         outbox: object,
-        ttl: timedelta,
+        idempotency_policy: IdempotencyPolicy,
         clock: Clock | None = None,
     ) -> None:
-        if not using or not domain_using or ttl <= timedelta(0):
-            raise ValueError("one database alias and a positive idempotency ttl are required")
+        if not using or not domain_using:
+            raise ValueError("one database alias is required")
         aliases = {
             using,
             domain_using,
@@ -98,7 +99,7 @@ class DjangoTransactionalOperation[ResultT, OutboxPayloadT]:
         self._idempotency = cast(Any, idempotency)
         self._receipts = cast(Any, receipts)
         self._outbox = cast(Any, outbox)
-        self._ttl = ttl
+        self._policy = idempotency_policy
         self._clock = clock or SystemClock()
 
     def execute(
@@ -125,7 +126,7 @@ class DjangoTransactionalOperation[ResultT, OutboxPayloadT]:
                         key,
                         fingerprint,
                         now=now,
-                        ttl=self._ttl,
+                        lease_ttl=self._policy.execution_lease_ttl,
                     ),
                 )
                 if not isinstance(decision, Execute):
@@ -145,7 +146,13 @@ class DjangoTransactionalOperation[ResultT, OutboxPayloadT]:
                 for envelope in envelopes:
                     if not isinstance(self._outbox.add(envelope), OutboxAdded):
                         raise _ExpectedRollback("outbox compare-and-set failed")
-                if not self._idempotency.complete(decision.token, value, now=now):
+                completed = self._idempotency.complete(
+                    decision.token,
+                    value,
+                    now=now,
+                    retention_ttl=self._policy.result_retention_ttl,
+                )
+                if not isinstance(completed, ReservationCompleted):
                     raise _ExpectedRollback("idempotency compare-and-set failed")
                 return TransactionalOperationCommitted(value, receipt, len(envelopes))
         except _ExpectedRollback as failure:

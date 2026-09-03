@@ -76,6 +76,7 @@ pytitect.http:static_titles
 pytitect.idempotency:Conflict
 pytitect.idempotency:Execute
 pytitect.idempotency:IdempotencyCoordinator
+pytitect.idempotency:IdempotencyPolicy
 pytitect.idempotency:IdempotencyScope
 pytitect.idempotency:IdempotencyStore
 pytitect.idempotency:IdempotencyStoreHarness
@@ -83,7 +84,12 @@ pytitect.idempotency:InMemoryIdempotencyStore
 pytitect.idempotency:InProgress
 pytitect.idempotency:Replay
 pytitect.idempotency:RequestFingerprint
+pytitect.idempotency:ReservationAbandoned
+pytitect.idempotency:ReservationCompleted
+pytitect.idempotency:ReservationMarkedUncertain
+pytitect.idempotency:ReservationRenewed
 pytitect.idempotency:ReservationToken
+pytitect.idempotency:StaleReservation
 pytitect.idempotency:Uncertain
 pytitect.inbox:InMemoryInboxStore
 pytitect.inbox:InboxAccepted

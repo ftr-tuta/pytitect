@@ -1536,9 +1536,9 @@ dev = [
 requires-dist = [
     { name = "boto3", marker = "extra == 'aws'", specifier = ">=1.43.88,<2" },
     { name = "cryptography", marker = "extra == 'sync'", specifier = ">=46,<51" },
-    { name = "django", marker = "extra == 'contracts'", specifier = ">=5.2.1,<5.3" },
-    { name = "django", marker = "extra == 'django'", specifier = ">=5.2.1,<5.3" },
-    { name = "django", marker = "extra == 'drf'", specifier = ">=5.2.1,<5.3" },
+    { name = "django", marker = "extra == 'contracts'", specifier = ">=5.2.1,<6.2" },
+    { name = "django", marker = "extra == 'django'", specifier = ">=5.2.1,<6.2" },
+    { name = "django", marker = "extra == 'drf'", specifier = ">=5.2.1,<6.2" },
     { name = "djangorestframework", marker = "extra == 'contracts'", specifier = ">=3.16,<4" },
     { name = "djangorestframework", marker = "extra == 'drf'", specifier = ">=3.16,<4" },
     { name = "drf-spectacular", marker = "extra == 'contracts'", specifier = ">=0.28,<1" },
@@ -1561,7 +1561,7 @@ provides-extras = ["aws", "canonical-json", "contracts", "django", "dpop", "drf"
 [package.metadata.requires-dev]
 dev = [
     { name = "build", specifier = ">=1.2" },
-    { name = "django-stubs", specifier = ">=5.2,<5.3" },
+    { name = "django-stubs", specifier = ">=5.2,<6.2" },
     { name = "djangorestframework-stubs", specifier = ">=3.16,<4" },
     { name = "hatchling", specifier = ">=1.27" },
     { name = "hypothesis", specifier = ">=6.130" },

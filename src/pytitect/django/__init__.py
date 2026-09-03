@@ -1,6 +1,17 @@
 """Explicit Django adapters. Importing this package does not inspect settings."""
 
 from pytitect.django.checks import register_checks
+from pytitect.django.event_processing import (
+    AsyncSyncBridge,
+    DjangoAsyncBridge,
+    DjangoAsyncOutboxStore,
+    DjangoDeliveryCommitted,
+    DjangoDeliveryQuarantined,
+    DjangoDeliveryRetryable,
+    DjangoTransactionalConsumer,
+    DjangoTransactionRunner,
+    SyncTransactionRunner,
+)
 from pytitect.django.leases import DjangoFencedCommit
 from pytitect.django.maintenance import (
     DjangoRetentionMaintenance,
@@ -27,7 +38,13 @@ from pytitect.django.transactions import (
 )
 
 __all__ = [
+    "AsyncSyncBridge",
+    "DjangoAsyncBridge",
+    "DjangoAsyncOutboxStore",
     "DjangoCheckpointStore",
+    "DjangoDeliveryCommitted",
+    "DjangoDeliveryQuarantined",
+    "DjangoDeliveryRetryable",
     "DjangoFencedCommit",
     "DjangoGenerationStore",
     "DjangoIdempotencyStore",
@@ -39,9 +56,12 @@ __all__ = [
     "DjangoReplayStore",
     "DjangoRetentionMaintenance",
     "DjangoTransactionBoundary",
+    "DjangoTransactionRunner",
+    "DjangoTransactionalConsumer",
     "DjangoTransactionalOperation",
     "DurableOutboxArchive",
     "RetentionIndexModels",
+    "SyncTransactionRunner",
     "TransactionalOperationCommitted",
     "TransactionalOperationRolledBack",
     "build_retention_index_check",

@@ -49,6 +49,7 @@ sqlalchemy = [
   "SQLAlchemy[asyncio]>=2.0.52,<2.1",
   "psycopg[binary,pool]>=3.3.5,<4",
 ]
+nats = ["nats-py>=2.15,<3"]
 
 [dependency-groups]
 dev = [

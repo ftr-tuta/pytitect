@@ -70,3 +70,25 @@ class VersionColumnsMixin:
 class TerminalStateColumnsMixin:
     terminal: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+@declarative_mixin
+class ProcessManagerModelMixin:
+    process_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    instance_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    version: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    state: Mapped[dict[str, Any]] = mapped_column(nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+@declarative_mixin
+class ProcessTimerModelMixin(LeaseColumnsMixin):
+    process_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    instance_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    timer_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    effect_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    effect_kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    effect_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    effect_payload: Mapped[dict[str, Any]] = mapped_column(nullable=False)

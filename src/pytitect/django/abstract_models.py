@@ -126,3 +126,34 @@ class AbstractGenerationModel(models.Model):
 
     class Meta:
         abstract = True
+
+
+class AbstractProcessManagerModel(models.Model):
+    process_name: models.CharField[str, str] = models.CharField(max_length=255)
+    instance_id: models.CharField[str, str] = models.CharField(max_length=255)
+    version: models.PositiveBigIntegerField[int, int] = models.PositiveBigIntegerField()
+    status: models.CharField[str, str] = models.CharField(max_length=32)
+    state: models.JSONField[object, object] = models.JSONField()
+    updated_at: models.DateTimeField[datetime, datetime] = models.DateTimeField()
+
+    class Meta:
+        abstract = True
+
+
+class AbstractProcessTimerModel(models.Model):
+    process_name: models.CharField[str, str] = models.CharField(max_length=255)
+    instance_id: models.CharField[str, str] = models.CharField(max_length=255)
+    timer_id: models.CharField[str, str] = models.CharField(max_length=255)
+    due_at: models.DateTimeField[datetime, datetime] = models.DateTimeField()
+    effect_id: models.CharField[str, str] = models.CharField(max_length=255)
+    effect_kind: models.CharField[str, str] = models.CharField(max_length=32)
+    effect_name: models.CharField[str, str] = models.CharField(max_length=255)
+    effect_payload: models.JSONField[object, object] = models.JSONField()
+    claim_id: models.CharField[str, str] = models.CharField(max_length=64, null=True)
+    claimed_until: models.DateTimeField[datetime, datetime] = models.DateTimeField(null=True)
+    fencing_token: models.PositiveBigIntegerField[int, int] = models.PositiveBigIntegerField(
+        default=0
+    )
+
+    class Meta:
+        abstract = True

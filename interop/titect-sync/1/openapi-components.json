@@ -1,0 +1,42 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Pytitect neutral sync components",
+    "version": "titect-sync/1"
+  },
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "paths": {},
+  "components": {
+    "schemas": {
+      "SyncDocument": { "$ref": "schema.json" },
+      "SyncSession": { "$ref": "schema.json#/$defs/session" },
+      "DatasetDescriptor": { "$ref": "schema.json#/$defs/dataset" },
+      "BootstrapRequest": { "$ref": "schema.json#/$defs/bootstrapRequestPayload" },
+      "BootstrapResponse": { "$ref": "schema.json#/$defs/bootstrapResponsePayload" },
+      "SnapshotPage": { "$ref": "schema.json#/$defs/snapshotPayload" },
+      "DeltaPage": { "$ref": "schema.json#/$defs/deltaPayload" },
+      "ResetRequired": { "$ref": "schema.json#/$defs/resetPayload" },
+      "GenerationMismatch": { "$ref": "schema.json#/$defs/generationMismatchPayload" },
+      "Readiness": { "$ref": "schema.json#/$defs/readinessPayload" },
+      "MutationOutcome": { "$ref": "schema.json#/$defs/mutationOutcomePayload" },
+      "MutationOutcomes": { "$ref": "schema.json#/$defs/mutationOutcomesPayload" }
+    },
+    "headers": {
+      "SyncProtocol": {
+        "description": "Exact protocol bundle identifier; no fallback is implied.",
+        "required": true,
+        "schema": { "type": "string", "const": "titect-sync/1" }
+      },
+      "Traceparent": {
+        "description": "W3C Trace Context traceparent field.",
+        "required": false,
+        "schema": { "type": "string", "minLength": 55, "maxLength": 1024 }
+      },
+      "Tracestate": {
+        "description": "W3C Trace Context combined tracestate field.",
+        "required": false,
+        "schema": { "type": "string", "maxLength": 512 }
+      }
+    }
+  }
+}

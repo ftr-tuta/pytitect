@@ -37,6 +37,7 @@ from pytitect.drf.fields import (
     StrictUUIDField,
 )
 from pytitect.drf.problems import make_exception_handler
+from pytitect.drf.requests import adapt_trace_context
 from pytitect.http import ProblemRenderer, static_titles
 
 
@@ -175,3 +176,14 @@ def test_django_transaction_boundary_uses_explicit_alias(monkeypatch: pytest.Mon
         ("ran", "events"),
     ]
     assert "django" not in json.loads(json.dumps({"module": "pytitect"}))["module"]
+
+
+def test_drf_trace_context_adapter_is_opt_in() -> None:
+    class Request:
+        def __init__(self) -> None:
+            self.headers = {
+                "traceparent": ("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")
+            }
+
+    trace = adapt_trace_context(Request())
+    assert trace is not None and trace.sampled

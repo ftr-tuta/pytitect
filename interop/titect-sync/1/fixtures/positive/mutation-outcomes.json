@@ -1,0 +1,24 @@
+{
+  "protocol": "titect-sync/1",
+  "kind": "mutation_outcomes",
+  "payload": {
+    "dataset_id": "synthetic-dataset-1",
+    "generation": 7,
+    "outcomes": [
+      {
+        "mutation_id": "synthetic-mutation-1",
+        "state": "applied",
+        "revision": 8,
+        "receipt_id": "synthetic-receipt-1",
+        "reason": null
+      },
+      {
+        "mutation_id": "synthetic-mutation-2",
+        "state": "uncertain",
+        "revision": null,
+        "receipt_id": "synthetic-receipt-2",
+        "reason": "outcome is not proven"
+      }
+    ]
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "protocol": "titect-sync/1",
+  "kind": "delta",
+  "payload": {
+    "dataset_id": "synthetic-dataset-1",
+    "generation": 7,
+    "upserts": [
+      {
+        "item_id": "synthetic-item-1",
+        "revision": 3,
+        "value": { "enabled": true }
+      }
+    ],
+    "tombstones": [
+      {
+        "item_id": "synthetic-item-2",
+        "revision": 4,
+        "deleted_at": "2026-01-01T00:00:00.123Z"
+      }
+    ],
+    "next_cursor": null,
+    "integrity": {
+      "algorithm": "sha-256",
+      "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "item_count": 2
+    }
+  }
+}

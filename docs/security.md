@@ -11,3 +11,8 @@ reservation.
 
 A valid proof authenticates only that protocol statement. Session, connector, database, tenant, and
 authorization policy always remain in the application.
+
+W3C Trace Context is untrusted correlation input, not a security proof. The bounded parser rejects
+malformed identifiers and state, but consumers still own trust-boundary restarts, sampling limits,
+cross-origin exposure, and any decision to propagate vendor state. Trace and tracestate values must
+not contain credentials or personal information.

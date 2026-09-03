@@ -1,0 +1,14 @@
+{
+  "protocol": "titect-sync/1",
+  "limits": {
+    "max_document_bytes": 1048576,
+    "max_datasets": 128,
+    "max_items_per_page": 1000,
+    "max_mutations": 1000,
+    "max_opaque_id_bytes": 255,
+    "max_capabilities": 32,
+    "timestamp_precision": "milliseconds",
+    "timestamp_timezone": "UTC"
+  },
+  "note": "JSON Schema maxLength counts characters; implementations also enforce the byte limits declared here."
+}

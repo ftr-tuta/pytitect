@@ -1,0 +1,58 @@
+{
+  "cases": [
+    {
+      "name": "unknown envelope field",
+      "document": {
+        "protocol": "titect-sync/1",
+        "kind": "readiness",
+        "payload": {
+          "ready": true,
+          "checked_at": "2026-01-01T00:00:00.123Z",
+          "reason": null,
+          "retry_after_ms": null
+        },
+        "future": true
+      }
+    },
+    {
+      "name": "wrong protocol",
+      "document": {
+        "protocol": "titect-sync/2",
+        "kind": "readiness",
+        "payload": {
+          "ready": true,
+          "checked_at": "2026-01-01T00:00:00.123Z",
+          "reason": null,
+          "retry_after_ms": null
+        }
+      }
+    },
+    {
+      "name": "timestamp without milliseconds",
+      "document": {
+        "protocol": "titect-sync/1",
+        "kind": "readiness",
+        "payload": {
+          "ready": true,
+          "checked_at": "2026-01-01T00:00:00Z",
+          "reason": null,
+          "retry_after_ms": null
+        }
+      }
+    },
+    {
+      "name": "applied mutation without revision",
+      "document": {
+        "protocol": "titect-sync/1",
+        "kind": "mutation_outcome",
+        "payload": {
+          "mutation_id": "synthetic-mutation-1",
+          "state": "applied",
+          "revision": null,
+          "receipt_id": null,
+          "reason": null
+        }
+      }
+    }
+  ]
+}

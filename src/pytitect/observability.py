@@ -31,6 +31,20 @@ _FORBIDDEN_FRAGMENTS = frozenset(
     }
 )
 
+# Values are intentionally free of raw identifiers and transport details.
+OBSERVATION_VOCABULARY = frozenset(
+    {
+        "operation",
+        "outcome",
+        "protocol",
+        "sync_kind",
+        "dataset_hash",
+        "trace_sampled",
+        "item_count",
+        "duration_ms",
+    }
+)
+
 
 class AttributeMode(StrEnum):
     PLAIN = "plain"
@@ -67,10 +81,7 @@ class ObservationPolicy:
             if rule.mode is AttributeMode.REDACT:
                 output[name] = "[REDACTED]"
             elif rule.mode is AttributeMode.HASH:
-                digest = hashlib.blake2b(
-                    str(value).encode(), key=self.hash_key, digest_size=16
-                ).hexdigest()
-                output[name] = digest
+                output[name] = pseudonymous_attribute(value, key=self.hash_key)
             else:
                 output[name] = value
         return MappingProxyType(output)
@@ -140,3 +151,11 @@ def _sanitized_message(error: Exception, limit: int) -> str:
     if not message:
         message = "observer failed"
     return message[:limit]
+
+
+def pseudonymous_attribute(value: JsonScalar, *, key: bytes) -> str:
+    """Produce the documented keyed BLAKE2b-128 observability pseudonym."""
+
+    if not key:
+        raise ValueError("a non-empty key is required for pseudonymous attributes")
+    return hashlib.blake2b(str(value).encode(), key=key, digest_size=16).hexdigest()

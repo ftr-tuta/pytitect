@@ -71,6 +71,7 @@ def main() -> int:
     run(python, "-m", "mypy")
     run(python, "-m", "pytest")
     run(python, "tool/api_snapshot.py")
+    run(python, "tool/sync_bundle.py")
     run(python, "tool/optional_imports.py")
     forbidden = [
         path

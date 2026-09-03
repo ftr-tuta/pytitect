@@ -2,6 +2,7 @@
 
 from pytitect.sqlalchemy.models import (
     CheckpointModelMixin,
+    EventModelMixin,
     InboxModelMixin,
     JobModelMixin,
     JobScheduleModelMixin,
@@ -9,7 +10,10 @@ from pytitect.sqlalchemy.models import (
     OutboxModelMixin,
     ProcessManagerModelMixin,
     ProcessTimerModelMixin,
+    ProjectionModelMixin,
+    ProjectionRebuildModelMixin,
     RejectedDeliveryModelMixin,
+    SnapshotModelMixin,
     TerminalStateColumnsMixin,
     VersionColumnsMixin,
 )
@@ -26,6 +30,7 @@ from pytitect.sqlalchemy.uow import SQLAlchemyUnitOfWorkFactory
 
 __all__ = [
     "CheckpointModelMixin",
+    "EventModelMixin",
     "InboxModelMixin",
     "JobModelMixin",
     "JobScheduleModelMixin",
@@ -35,12 +40,15 @@ __all__ = [
     "PayloadSerializer",
     "ProcessManagerModelMixin",
     "ProcessTimerModelMixin",
+    "ProjectionModelMixin",
+    "ProjectionRebuildModelMixin",
     "RejectedDeliveryModelMixin",
     "SQLAlchemyCheckpointStore",
     "SQLAlchemyInboxStore",
     "SQLAlchemyOutboxStore",
     "SQLAlchemyRejectedDeliveryStore",
     "SQLAlchemyUnitOfWorkFactory",
+    "SnapshotModelMixin",
     "TerminalStateColumnsMixin",
     "VersionColumnsMixin",
     "outbox_claim_statement",

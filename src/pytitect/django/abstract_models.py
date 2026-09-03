@@ -193,3 +193,57 @@ class AbstractJobScheduleModel(models.Model):
 
     class Meta:
         abstract = True
+
+
+class AbstractProjectionModel(models.Model):
+    projection_name: models.CharField[str, str] = models.CharField(max_length=255)
+    partition: models.CharField[str, str] = models.CharField(max_length=255)
+    version: models.PositiveBigIntegerField[int, int] = models.PositiveBigIntegerField()
+    checkpoint: models.PositiveBigIntegerField[int, int] = models.PositiveBigIntegerField(default=0)
+    state: models.JSONField[object, object] = models.JSONField()
+
+    class Meta:
+        abstract = True
+
+
+class AbstractProjectionRebuildModel(models.Model):
+    run_id: models.CharField[str, str] = models.CharField(max_length=255)
+    projection_name: models.CharField[str, str] = models.CharField(max_length=255)
+    partition: models.CharField[str, str] = models.CharField(max_length=255)
+    projection_version: models.PositiveBigIntegerField[int, int] = models.PositiveBigIntegerField()
+    through_position: models.PositiveBigIntegerField[int, int] = models.PositiveBigIntegerField()
+    batch_size: models.PositiveIntegerField[int, int] = models.PositiveIntegerField()
+    next_position: models.PositiveBigIntegerField[int, int] = models.PositiveBigIntegerField(
+        default=0
+    )
+    state: models.JSONField[object, object] = models.JSONField()
+    status: models.CharField[str, str] = models.CharField(max_length=32)
+
+    class Meta:
+        abstract = True
+
+
+class AbstractEventModel(models.Model):
+    category: models.CharField[str, str] = models.CharField(max_length=255)
+    stream_id: models.CharField[str, str] = models.CharField(max_length=255)
+    stream_version: models.PositiveBigIntegerField[int, int] = models.PositiveBigIntegerField()
+    global_position: models.PositiveBigIntegerField[int, int] = models.PositiveBigIntegerField()
+    event_id: models.CharField[str, str] = models.CharField(max_length=255)
+    event_type: models.CharField[str, str] = models.CharField(max_length=255)
+    payload: models.JSONField[object, object] = models.JSONField()
+    occurred_at: models.DateTimeField[datetime, datetime] = models.DateTimeField()
+    event_metadata: models.JSONField[object, object] = models.JSONField(default=dict)
+
+    class Meta:
+        abstract = True
+
+
+class AbstractSnapshotModel(models.Model):
+    category: models.CharField[str, str] = models.CharField(max_length=255)
+    stream_id: models.CharField[str, str] = models.CharField(max_length=255)
+    version: models.PositiveBigIntegerField[int, int] = models.PositiveBigIntegerField()
+    state: models.JSONField[object, object] = models.JSONField()
+    created_at: models.DateTimeField[datetime, datetime] = models.DateTimeField()
+
+    class Meta:
+        abstract = True

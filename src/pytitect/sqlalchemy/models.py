@@ -116,3 +116,47 @@ class JobScheduleModelMixin:
     policy: Mapped[str | None] = mapped_column(String(255), nullable=True)
     sequence: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+@declarative_mixin
+class ProjectionModelMixin:
+    projection_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    partition: Mapped[str] = mapped_column(String(255), nullable=False)
+    version: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    checkpoint: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    state: Mapped[dict[str, Any]] = mapped_column(nullable=False)
+
+
+@declarative_mixin
+class ProjectionRebuildModelMixin:
+    run_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    projection_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    partition: Mapped[str] = mapped_column(String(255), nullable=False)
+    projection_version: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    through_position: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    batch_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    next_position: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    state: Mapped[dict[str, Any]] = mapped_column(nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+
+
+@declarative_mixin
+class EventModelMixin:
+    category: Mapped[str] = mapped_column(String(255), nullable=False)
+    stream_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    stream_version: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    global_position: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    event_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(255), nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    event_metadata: Mapped[dict[str, Any]] = mapped_column(nullable=False)
+
+
+@declarative_mixin
+class SnapshotModelMixin:
+    category: Mapped[str] = mapped_column(String(255), nullable=False)
+    stream_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    version: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    state: Mapped[dict[str, Any]] = mapped_column(nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

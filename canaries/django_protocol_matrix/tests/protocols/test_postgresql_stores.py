@@ -19,6 +19,7 @@ from pytitect.django import (
     DjangoIdempotencyStore,
     DjangoInboxStore,
     DjangoLeaseStore,
+    DjangoMutationBatchStore,
     DjangoOutboxStore,
     DjangoReceiptStore,
     DjangoReplayStore,
@@ -47,7 +48,19 @@ from pytitect.receipts import (
     StillUncertain,
 )
 from pytitect.security import ReplayAccepted, ReplayDetected
-from pytitect.sync import GenerationCommitted, GenerationGuard, StaleGeneration
+from pytitect.sync import (
+    PER_ITEM,
+    BatchCommitted,
+    BatchInProgress,
+    BatchItem,
+    BatchItemReceipt,
+    BatchReplay,
+    GenerationCommitted,
+    GenerationGuard,
+    MutationBatchCoordinator,
+    MutationBatchState,
+    StaleGeneration,
+)
 from pytitect_protocol_matrix.mobile_v2.models import (
     CheckpointRecord,
     DomainMutation,
@@ -55,6 +68,7 @@ from pytitect_protocol_matrix.mobile_v2.models import (
     IdempotencyRecord,
     InboxRecord,
     LeaseRecord,
+    MutationBatchRecord,
     OutboxRecord,
     ReceiptRecord,
     ReplayRecord,
@@ -255,6 +269,102 @@ def test_concurrent_renewal_makes_the_old_lease_stale() -> None:
         ]
     assert sum(isinstance(result, LeaseRenewed) for result in results) == 1
     assert sum(isinstance(result, StaleLease) for result in results) == 1
+
+
+def test_mutation_batch_resumes_one_worker_after_a_committed_prefix() -> None:
+    now = timezone.now()
+
+    class Clock:
+        value = now
+
+        def now(self):  # type: ignore[no-untyped-def]
+            return self.value
+
+    clock = Clock()
+    batches = DjangoMutationBatchStore.from_model(
+        MutationBatchRecord,
+        using="default",
+        encode_result=_json,
+        decode_result=_json,
+    )
+    items = DjangoIdempotencyStore.from_model(
+        IdempotencyRecord,
+        using="default",
+        encode_value=lambda receipt: {
+            "item_id": receipt.item_id,
+            "result": receipt.result,
+            "replayed": receipt.replayed,
+        },
+        decode_value=lambda value: BatchItemReceipt(
+            value["item_id"], value["result"], value["replayed"]
+        ),
+    )
+    policy = IdempotencyPolicy(
+        timedelta(seconds=5), timedelta(hours=1), timedelta(days=1)
+    )
+    coordinator = MutationBatchCoordinator(
+        batches,
+        items,
+        DjangoTransactionBoundary("default"),
+        using="default",
+        clock=clock,
+    )
+    payloads = (BatchItem("one", 1), BatchItem("two", 2))
+
+    def crash_after_first(item, using):  # type: ignore[no-untyped-def]
+        if item.item_id == "two":
+            raise RuntimeError("synthetic crash after committed prefix")
+        row = DomainMutation.objects.using(using).create(protocol="batch", value=item.payload)
+        return {"row_id": row.pk}
+
+    with pytest.raises(RuntimeError, match="committed prefix"):
+        coordinator.execute(
+            batch_id="resumable-batch",
+            items=payloads,
+            policy=PER_ITEM,
+            mutate=crash_after_first,
+            idempotency_policy=policy,
+        )
+    record = MutationBatchRecord.objects.get(batch_id="resumable-batch")
+    assert record.state == MutationBatchState.PARTIALLY_COMMITTED
+    assert record.next_index == 1
+    assert DomainMutation.objects.filter(protocol="batch").count() == 1
+
+    clock.value += timedelta(seconds=5)
+    resume_barrier = Barrier(2)
+
+    def resume():  # type: ignore[no-untyped-def]
+        close_old_connections()
+        try:
+            resume_barrier.wait()
+            local = MutationBatchCoordinator(
+                batches,
+                items,
+                DjangoTransactionBoundary("default"),
+                using="default",
+                clock=clock,
+            )
+            return local.execute(
+                batch_id="resumable-batch",
+                items=payloads,
+                policy=PER_ITEM,
+                mutate=lambda item, using: {
+                    "row_id": DomainMutation.objects.using(using)
+                    .create(protocol="batch", value=item.payload)
+                    .pk
+                },
+                idempotency_policy=policy,
+            )
+        finally:
+            close_old_connections()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        outcomes = [future.result() for future in [executor.submit(resume) for _ in range(2)]]
+    assert sum(isinstance(outcome, BatchCommitted) for outcome in outcomes) == 1
+    assert sum(
+        isinstance(outcome, (BatchInProgress, BatchReplay)) for outcome in outcomes
+    ) == 1
+    assert DomainMutation.objects.filter(protocol="batch").count() == 2
 
 
 def test_transactional_operation_rolls_back_every_owned_write_and_replays() -> None:

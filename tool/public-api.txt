@@ -51,6 +51,7 @@ pytitect.django:DjangoGenerationStore
 pytitect.django:DjangoIdempotencyStore
 pytitect.django:DjangoInboxStore
 pytitect.django:DjangoLeaseStore
+pytitect.django:DjangoMutationBatchStore
 pytitect.django:DjangoOutboxStore
 pytitect.django:DjangoReceiptStore
 pytitect.django:DjangoReplayStore
@@ -192,10 +193,19 @@ pytitect.sync:DependencyOrder
 pytitect.sync:GenerationCommitted
 pytitect.sync:GenerationGuard
 pytitect.sync:GenerationStore
+pytitect.sync:InMemoryMutationBatchStore
+pytitect.sync:MutationBatchCompleted
 pytitect.sync:MutationBatchCoordinator
+pytitect.sync:MutationBatchLease
+pytitect.sync:MutationBatchLeaseRenewed
+pytitect.sync:MutationBatchMarkedUncertain
+pytitect.sync:MutationBatchProgressed
+pytitect.sync:MutationBatchState
+pytitect.sync:MutationBatchStore
 pytitect.sync:OpaqueCursorCodec
 pytitect.sync:PER_ITEM
 pytitect.sync:StaleGeneration
+pytitect.sync:StaleMutationBatchLease
 pytitect:Clock
 pytitect:Deadline
 pytitect:Limits

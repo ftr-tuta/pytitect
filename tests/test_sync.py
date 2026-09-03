@@ -5,13 +5,22 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from pytitect.idempotency import IdempotencyPolicy, InMemoryIdempotencyStore, StaleReservation
+from pytitect.idempotency import (
+    IdempotencyPolicy,
+    InMemoryIdempotencyStore,
+    RequestFingerprint,
+    StaleReservation,
+)
 from pytitect.sync import (
     ALL_OR_NOTHING,
     PER_ITEM,
     BatchCommitted,
+    BatchConflict,
+    BatchInProgress,
     BatchItem,
+    BatchItemReceipt,
     BatchItemsCommittedEnvelopeUnconfirmed,
+    BatchReplay,
     BatchUncertain,
     CursorAlgorithm,
     CursorDecoded,
@@ -22,9 +31,18 @@ from pytitect.sync import (
     DependencyOrder,
     GenerationCommitted,
     GenerationGuard,
+    InMemoryMutationBatchStore,
     MutationBatchCoordinator,
+    MutationBatchLease,
     OpaqueCursorCodec,
     StaleGeneration,
+    StaleMutationBatchLease,
+)
+from pytitect.sync.batches import (
+    MutationBatchCompleted,
+    MutationBatchLeaseRenewed,
+    MutationBatchMarkedUncertain,
+    MutationBatchProgressed,
 )
 
 
@@ -107,59 +125,212 @@ def test_generation_guard() -> None:
     )
 
 
-def test_mutation_batches_empty_order_replay_and_envelope_uncertainty() -> None:
+def test_mutation_batch_store_lease_progress_retention_and_uncertainty() -> None:
     now = datetime(2026, 1, 1, tzinfo=UTC)
-    envelopes = InMemoryIdempotencyStore[tuple]()
-    item_store = InMemoryIdempotencyStore()
-    coordinator = MutationBatchCoordinator(envelopes, item_store, Transaction(), using="default")
+    store = InMemoryMutationBatchStore[dict[str, int]](capacity=2)
+    fingerprint = RequestFingerprint.from_json({"items": [1]})
+    lease = store.begin(
+        "sync",
+        "batch",
+        fingerprint,
+        total_items=1,
+        now=now,
+        lease_ttl=timedelta(seconds=5),
+    )
+    assert isinstance(lease, MutationBatchLease)
+    assert isinstance(
+        store.begin(
+            "sync",
+            "batch",
+            fingerprint,
+            total_items=1,
+            now=now,
+            lease_ttl=timedelta(seconds=5),
+        ),
+        BatchInProgress,
+    )
+    assert isinstance(
+        store.begin(
+            "sync",
+            "batch",
+            RequestFingerprint.from_json({"items": [2]}),
+            total_items=1,
+            now=now,
+            lease_ttl=timedelta(seconds=5),
+        ),
+        BatchConflict,
+    )
+    renewed = store.renew(
+        lease,
+        now=now + timedelta(seconds=1),
+        lease_ttl=timedelta(seconds=5),
+    )
+    assert isinstance(renewed, MutationBatchLeaseRenewed)
+    assert isinstance(
+        store.renew(lease, now=now + timedelta(seconds=1), lease_ttl=timedelta(seconds=5)),
+        StaleMutationBatchLease,
+    )
+    receipt = BatchItemReceipt("one", {"value": 1})
+    progressed = store.advance(
+        renewed.lease,
+        receipt,
+        now=now + timedelta(seconds=2),
+        lease_ttl=timedelta(seconds=5),
+    )
+    assert isinstance(progressed, MutationBatchProgressed)
+    completed = store.complete(
+        progressed.lease,
+        now=now + timedelta(seconds=3),
+        retention_ttl=timedelta(minutes=1),
+    )
+    assert isinstance(completed, MutationBatchCompleted)
+    assert isinstance(
+        store.begin(
+            "sync",
+            "batch",
+            fingerprint,
+            total_items=1,
+            now=now + timedelta(seconds=6),
+            lease_ttl=timedelta(seconds=5),
+        ),
+        BatchReplay,
+    )
+    replacement = store.begin(
+        "sync",
+        "batch",
+        fingerprint,
+        total_items=1,
+        now=now + timedelta(minutes=2),
+        lease_ttl=timedelta(seconds=5),
+    )
+    assert isinstance(replacement, MutationBatchLease)
+    marked = store.mark_uncertain(
+        replacement,
+        "outcome unknown",
+        now=now + timedelta(minutes=2),
+        retention_ttl=timedelta(minutes=1),
+    )
+    assert isinstance(marked, MutationBatchMarkedUncertain)
+    assert isinstance(
+        store.begin(
+            "sync",
+            "batch",
+            fingerprint,
+            total_items=1,
+            now=now + timedelta(minutes=2),
+            lease_ttl=timedelta(seconds=5),
+        ),
+        BatchUncertain,
+    )
+
+
+def test_mutation_batches_empty_order_replay_and_envelope_uncertainty() -> None:
+    from conftest import ManualClock
+
+    clock = ManualClock()
+    envelopes = InMemoryMutationBatchStore()
+    events: list[str] = []
+
+    class TrackingItemStore(InMemoryIdempotencyStore):
+        def reserve(self, scope, key, fingerprint, *, now, lease_ttl):  # type: ignore[no-untyped-def]
+            events.append(f"reserve:{key}")
+            return super().reserve(scope, key, fingerprint, now=now, lease_ttl=lease_ttl)
+
+    item_store = TrackingItemStore()
+    coordinator = MutationBatchCoordinator(
+        envelopes, item_store, Transaction(), using="default", clock=clock
+    )
     calls: list[str] = []
     items = (BatchItem("b", {"value": 2}), BatchItem("a", {"value": 1}))
     result = coordinator.execute(
         batch_id="batch",
         items=items,
         policy=ALL_OR_NOTHING,
-        mutate=lambda item, using: calls.append(f"{using}:{item.item_id}") or item.payload,
-        now=now,
+        mutate=lambda item, using: (
+            events.append(f"mutate:{item.item_id}"),
+            calls.append(f"{using}:{item.item_id}"),
+            item.payload,
+        )[-1],
         idempotency_policy=POLICY,
     )
     assert isinstance(result, BatchCommitted)
     assert [receipt.item_id for receipt in result.receipts] == ["b", "a"]
     assert calls == ["default:b", "default:a"]
+    assert events[:3] == ["reserve:b", "reserve:a", "mutate:b"]
+    replay = coordinator.execute(
+        batch_id="batch",
+        items=items,
+        policy=ALL_OR_NOTHING,
+        mutate=lambda item, using: calls.append(item.item_id) or item.payload,
+        idempotency_policy=POLICY,
+    )
+    assert isinstance(replay, BatchReplay)
+    assert calls == ["default:b", "default:a"]
 
     empty = MutationBatchCoordinator(
-        InMemoryIdempotencyStore(), InMemoryIdempotencyStore(), Transaction(), using="default"
+        InMemoryMutationBatchStore(),
+        InMemoryIdempotencyStore(),
+        Transaction(),
+        using="default",
+        clock=clock,
     ).execute(
         batch_id="empty",
         items=(),
         policy=PER_ITEM,
         mutate=lambda item, using: None,
-        now=now,
         idempotency_policy=POLICY,
     )
     assert empty == BatchCommitted(())
 
-    class EnvelopeUnconfirmed(InMemoryIdempotencyStore):
-        def complete(  # type: ignore[no-untyped-def]
-            self, token, value, *, now, retention_ttl
-        ):
-            del token, value, now, retention_ttl
-            return StaleReservation()
+    class EnvelopeUnconfirmed(InMemoryMutationBatchStore):
+        fail_once = True
 
+        def complete(self, lease, *, now, retention_ttl):  # type: ignore[no-untyped-def]
+            if self.fail_once:
+                self.fail_once = False
+                return StaleMutationBatchLease()
+            return super().complete(lease, now=now, retention_ttl=retention_ttl)
+
+    resumable = EnvelopeUnconfirmed()
+    resumable_items = InMemoryIdempotencyStore()
+    mutation_calls: list[str] = []
     uncertain = MutationBatchCoordinator(
-        EnvelopeUnconfirmed(), InMemoryIdempotencyStore(), Transaction(), using="default"
+        resumable,
+        resumable_items,
+        Transaction(),
+        using="default",
+        clock=clock,
     ).execute(
         batch_id="uncertain",
         items=(BatchItem("one", {"value": 1}),),
         policy=PER_ITEM,
-        mutate=lambda item, using: item.payload,
-        now=now,
+        mutate=lambda item, using: mutation_calls.append(item.item_id) or item.payload,
         idempotency_policy=POLICY,
     )
     assert isinstance(uncertain, BatchItemsCommittedEnvelopeUnconfirmed)
+    clock.advance(timedelta(minutes=1))
+    recovered = MutationBatchCoordinator(
+        resumable,
+        item_store=resumable_items,
+        transaction=Transaction(),
+        using="default",
+        clock=clock,
+    ).execute(
+        batch_id="uncertain",
+        items=(BatchItem("one", {"value": 1}),),
+        policy=PER_ITEM,
+        mutate=lambda item, using: mutation_calls.append(item.item_id) or item.payload,
+        idempotency_policy=POLICY,
+    )
+    assert isinstance(recovered, BatchCommitted)
+    assert recovered.receipts[0].replayed is True
+    assert mutation_calls == ["one"]
 
 
 def test_per_item_cas_failure_rolls_back_that_item() -> None:
-    now = datetime(2026, 1, 1, tzinfo=UTC)
+    from conftest import ManualClock
+
+    clock = ManualClock()
     mutations: list[str] = []
 
     class RollingTransaction:
@@ -180,13 +351,16 @@ def test_per_item_cas_failure_rolls_back_that_item() -> None:
             return StaleReservation()
 
     result = MutationBatchCoordinator(
-        InMemoryIdempotencyStore(), ItemUnconfirmed(), RollingTransaction(), using="default"
+        InMemoryMutationBatchStore(),
+        ItemUnconfirmed(),
+        RollingTransaction(),
+        using="default",
+        clock=clock,
     ).execute(
         batch_id="item-cas",
         items=(BatchItem("one", {"value": 1}),),
         policy=PER_ITEM,
         mutate=lambda item, using: mutations.append(item.item_id) or item.payload,
-        now=now,
         idempotency_policy=POLICY,
     )
     assert isinstance(result, BatchUncertain)

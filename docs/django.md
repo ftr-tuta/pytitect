@@ -12,10 +12,16 @@ Pytitect does not provide tables, migrations, routers, or automatic alias select
 models must define the documented unique constraints.
 
 `DjangoIdempotencyStore`, `DjangoReplayStore`, `DjangoInboxStore`, `DjangoOutboxStore`,
-`DjangoCheckpointStore`, `DjangoReceiptStore`, `DjangoLeaseStore`, and
+`DjangoCheckpointStore`, `DjangoReceiptStore`, `DjangoLeaseStore`,
+`DjangoMutationBatchStore`, and
 `DjangoGenerationStore` use PostgreSQL row locks. Outbox claims are ordered and use
 `select_for_update(skip_locked=True)`. Replay rows contain SHA-256 digests, never clear proofs.
 Lease rows survive release so their fencing tokens remain monotonic.
+
+Mutation batch models must uniquely constrain `(namespace, batch_id)`. Each item mutation, its
+idempotency receipt, and partial batch advancement must use the same alias and transaction. The
+adapter retains completed and uncertain rows until their configured terminal retention expires;
+expired execution leases allow one locked worker to resume instead of deleting partial progress.
 
 `DjangoFencedCommit.commit()` locks authority and performs the protected mutation in one
 transaction. `DjangoTransactionalOperation` rejects mixed aliases during construction and commits

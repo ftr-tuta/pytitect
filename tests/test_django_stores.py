@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -15,6 +16,7 @@ from pytitect.django import (
     DjangoIdempotencyStore,
     DjangoInboxStore,
     DjangoLeaseStore,
+    DjangoMutationBatchStore,
     DjangoOutboxStore,
     DjangoReceiptStore,
     DjangoReplayStore,
@@ -46,6 +48,20 @@ from pytitect.leases import (
 from pytitect.outbox import OutboxAdded, OutboxClaim, OutboxDuplicate, OutboxEnvelope
 from pytitect.receipts import MutationReceipt, ReceiptState
 from pytitect.security import ReplayAccepted
+from pytitect.sync.batches import (
+    BatchConflict,
+    BatchInProgress,
+    BatchItemReceipt,
+    BatchReplay,
+    BatchUncertain,
+    MutationBatchCompleted,
+    MutationBatchLease,
+    MutationBatchLeaseRenewed,
+    MutationBatchMarkedUncertain,
+    MutationBatchProgressed,
+    MutationBatchState,
+    StaleMutationBatchLease,
+)
 
 
 def test_callback_stores_always_receive_the_explicit_alias() -> None:
@@ -101,6 +117,81 @@ def test_callback_stores_always_receive_the_explicit_alias() -> None:
         ReservationMarkedUncertain,
     )
     assert isinstance(idempotency.abandon(decision.token, now=now), ReservationAbandoned)
+
+    batch_lease = MutationBatchLease(
+        "sync",
+        "batch",
+        "batch-token",
+        MutationBatchState.PROCESSING,
+        0,
+        1,
+        (),
+        now + timedelta(minutes=1),
+    )
+    batch_receipt = BatchItemReceipt("item", {"ok": True})
+    progressed_lease = replace(
+        batch_lease,
+        state=MutationBatchState.PARTIALLY_COMMITTED,
+        next_index=1,
+        receipts=(batch_receipt,),
+    )
+    batches = DjangoMutationBatchStore.from_callbacks(
+        using="events",
+        begin=lambda *args, using, **kwargs: (record(using), batch_lease)[1],
+        renew=lambda *args, using, **kwargs: (
+            record(using),
+            MutationBatchLeaseRenewed(batch_lease),
+        )[1],
+        advance=lambda *args, using, **kwargs: (
+            record(using),
+            MutationBatchProgressed(progressed_lease),
+        )[1],
+        complete=lambda *args, using, **kwargs: (
+            record(using),
+            MutationBatchCompleted(now + timedelta(hours=1)),
+        )[1],
+        mark_uncertain=lambda *args, using, **kwargs: (
+            record(using),
+            MutationBatchMarkedUncertain(now + timedelta(days=1)),
+        )[1],
+    )
+    assert (
+        batches.begin(
+            "sync",
+            "batch",
+            fingerprint,
+            total_items=1,
+            now=now,
+            lease_ttl=timedelta(minutes=1),
+        )
+        == batch_lease
+    )
+    assert isinstance(
+        batches.renew(batch_lease, now=now, lease_ttl=timedelta(minutes=1)),
+        MutationBatchLeaseRenewed,
+    )
+    assert isinstance(
+        batches.advance(
+            batch_lease,
+            batch_receipt,
+            now=now,
+            lease_ttl=timedelta(minutes=1),
+        ),
+        MutationBatchProgressed,
+    )
+    assert isinstance(
+        batches.complete(progressed_lease, now=now, retention_ttl=timedelta(hours=1)),
+        MutationBatchCompleted,
+    )
+    assert isinstance(
+        batches.mark_uncertain(
+            batch_lease,
+            "unknown",
+            now=now,
+            retention_ttl=timedelta(days=1),
+        ),
+        MutationBatchMarkedUncertain,
+    )
 
     replay = DjangoReplayStore.from_callbacks(
         using="events",
@@ -213,6 +304,191 @@ def test_callback_stores_always_receive_the_explicit_alias() -> None:
 def _atomic(**kwargs: Any):
     assert kwargs["using"] == "events"
     yield
+
+
+def test_django_mutation_batch_model_adapter_lifecycle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from django.db import transaction
+
+    from pytitect.django import stores as django_stores
+
+    monkeypatch.setattr(transaction, "atomic", _atomic)
+    monkeypatch.setattr(
+        django_stores,
+        "_postgresql",
+        lambda using: None if using == "events" else pytest.fail("unexpected alias"),
+    )
+
+    class Constraint:
+        fields = ("namespace", "batch_id")
+
+    class Meta:
+        fields: tuple[object, ...] = ()
+        unique_together: tuple[tuple[str, ...], ...] = ()
+        total_unique_constraints = (Constraint(),)
+
+    class Row:
+        def __init__(self, manager: Manager, **values: object) -> None:
+            self._manager = manager
+            for name, value in values.items():
+                setattr(self, name, value)
+
+        def save(self, *, using: str, update_fields: list[str]) -> None:
+            assert using == "events"
+            assert update_fields
+
+        def delete(self, *, using: str) -> None:
+            assert using == "events"
+            self._manager.rows.remove(self)
+
+    class Query:
+        def __init__(self, manager: Manager, lookup: dict[str, object]) -> None:
+            self.manager = manager
+            self.lookup = lookup
+
+        def first(self) -> Row | None:
+            return next(
+                (
+                    row
+                    for row in self.manager.rows
+                    if all(getattr(row, name) == value for name, value in self.lookup.items())
+                ),
+                None,
+            )
+
+    class Manager:
+        def __init__(self) -> None:
+            self.rows: list[Row] = []
+
+        def using(self, using: str) -> Manager:
+            assert using == "events"
+            return self
+
+        def select_for_update(self) -> Manager:
+            return self
+
+        def filter(self, **lookup: object) -> Query:
+            return Query(self, lookup)
+
+        def create(self, **values: object) -> Row:
+            row = Row(self, **values)
+            self.rows.append(row)
+            return row
+
+    class BatchModel:
+        _meta = Meta()
+        _default_manager = Manager()
+
+    store = DjangoMutationBatchStore.from_model(
+        BatchModel,
+        using="events",
+        encode_result=lambda value: value,
+        decode_result=lambda value: value,
+    )
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    lease_ttl = timedelta(seconds=5)
+    retention_ttl = timedelta(minutes=1)
+    fingerprint = RequestFingerprint.from_json({"items": [1]})
+
+    with pytest.raises(ValueError):
+        store.begin("", "batch", fingerprint, total_items=1, now=now, lease_ttl=lease_ttl)
+    lease = store.begin("sync", "batch", fingerprint, total_items=1, now=now, lease_ttl=lease_ttl)
+    assert isinstance(lease, MutationBatchLease)
+    assert isinstance(
+        store.begin("sync", "batch", fingerprint, total_items=1, now=now, lease_ttl=lease_ttl),
+        BatchInProgress,
+    )
+    assert isinstance(
+        store.begin(
+            "sync",
+            "batch",
+            RequestFingerprint.from_json({"items": [2]}),
+            total_items=1,
+            now=now,
+            lease_ttl=lease_ttl,
+        ),
+        BatchConflict,
+    )
+
+    renewed = store.renew(lease, now=now + timedelta(seconds=1), lease_ttl=lease_ttl)
+    assert isinstance(renewed, MutationBatchLeaseRenewed)
+    assert isinstance(
+        store.renew(lease, now=now + timedelta(seconds=1), lease_ttl=lease_ttl),
+        StaleMutationBatchLease,
+    )
+    with pytest.raises(ValueError):
+        store.advance(
+            renewed.lease,
+            BatchItemReceipt("one", {"value": 1}),
+            now=now + timedelta(seconds=2),
+            lease_ttl=timedelta(0),
+        )
+    progressed = store.advance(
+        renewed.lease,
+        BatchItemReceipt("one", {"value": 1}),
+        now=now + timedelta(seconds=2),
+        lease_ttl=lease_ttl,
+    )
+    assert isinstance(progressed, MutationBatchProgressed)
+    assert isinstance(
+        store.complete(
+            renewed.lease,
+            now=now + timedelta(seconds=3),
+            retention_ttl=retention_ttl,
+        ),
+        StaleMutationBatchLease,
+    )
+    completed = store.complete(
+        progressed.lease,
+        now=now + timedelta(seconds=3),
+        retention_ttl=retention_ttl,
+    )
+    assert isinstance(completed, MutationBatchCompleted)
+    replay = store.begin(
+        "sync",
+        "batch",
+        fingerprint,
+        total_items=1,
+        now=now + timedelta(seconds=4),
+        lease_ttl=lease_ttl,
+    )
+    assert isinstance(replay, BatchReplay)
+    assert replay.receipts == (BatchItemReceipt("one", {"value": 1}),)
+
+    replacement = store.begin(
+        "sync",
+        "batch",
+        fingerprint,
+        total_items=1,
+        now=completed.retained_until,
+        lease_ttl=lease_ttl,
+    )
+    assert isinstance(replacement, MutationBatchLease)
+    with pytest.raises(ValueError):
+        store.mark_uncertain(
+            replacement,
+            "",
+            now=completed.retained_until,
+            retention_ttl=retention_ttl,
+        )
+    marked = store.mark_uncertain(
+        replacement,
+        "commit outcome unknown",
+        now=completed.retained_until,
+        retention_ttl=retention_ttl,
+    )
+    assert isinstance(marked, MutationBatchMarkedUncertain)
+    uncertain = store.begin(
+        "sync",
+        "batch",
+        fingerprint,
+        total_items=1,
+        now=completed.retained_until + timedelta(seconds=1),
+        lease_ttl=lease_ttl,
+    )
+    assert isinstance(uncertain, BatchUncertain)
+    assert uncertain.reason == "commit outcome unknown"
 
 
 def test_django_fenced_and_transactional_commit(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -235,15 +235,15 @@ def test_callback_stores_always_receive_the_explicit_alias() -> None:
         using="events",
         add=lambda envelope, *, using: record(using),
         claim=lambda *, now, limit, claim_ttl, using: (record(using), (claim,))[1],
-        delivered=lambda claim, *, using: (record(using), True)[1],
+        delivered=lambda claim, *, at, using: (record(using), True)[1],
         retry=lambda claim, *, available_at, using: (record(using), True)[1],
-        failed=lambda claim, *, reason, using: (record(using), True)[1],
+        failed=lambda claim, *, reason, at, using: (record(using), True)[1],
     )
     outbox.add(envelope)
     assert outbox.claim(now=now, limit=1, claim_ttl=timedelta(seconds=1)) == (claim,)
-    assert outbox.delivered(claim)
+    assert outbox.delivered(claim, at=now)
     assert outbox.retry(claim, available_at=now)
-    assert outbox.failed(claim, reason="terminal")
+    assert outbox.failed(claim, reason="terminal", at=now)
 
     checkpoint = DjangoCheckpointStore.from_callbacks(
         using="events",

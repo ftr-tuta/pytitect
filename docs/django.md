@@ -44,3 +44,30 @@ The public store harnesses exercise the behavioral contract shared by the refere
 stores. Run the relevant harness against callback adapters in unit tests and against concrete models
 on PostgreSQL. The Django protocol-matrix canary demonstrates all harnesses with real row locks and
 transactions.
+
+## Retention maintenance
+
+`DjangoRetentionMaintenance("alias")` executes one finite plan per transaction. Candidate rows use
+deterministic timestamp/primary-key ordering and `select_for_update(skip_locked=True)`. The available
+plans cover idempotency, replay, inbox, receipts, delivered outbox rows, and failed outbox archival.
+Uncertain idempotency and receipt rows are excluded unless the corresponding plan explicitly sets
+`include_uncertain=True`. Lease-authority rows are never purged because their fencing counters must
+remain monotonic.
+
+The failed-outbox archive callback runs inside the deletion transaction and receives the exact
+database alias. It must only write durable archive rows using that alias. Network calls, messages,
+files, and other external effects are consumer responsibilities and must happen outside this
+callback.
+
+Recommended PostgreSQL indexes are:
+
+- idempotency: `(state, expires_at)`
+- mutation batches: `(state, retention_expires_at)`
+- replay: `(expires_at)`
+- inbox: `(completed_at)` and `(expires_at)`
+- receipts: `(state, updated_at)`
+- outbox: `(delivered_at)` and `(failed_at)`
+
+Construct `build_retention_index_check(RetentionIndexModels(...))` and pass the result to
+`register_checks(...)` to opt in to warnings for missing indexes. Pytitect does not register this
+check, add indexes, or ship migrations automatically.

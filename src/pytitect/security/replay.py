@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Protocol
 
+from pytitect.maintenance import MaintenanceSummary, PurgeReplayPlan
+
 
 @dataclass(frozen=True, slots=True)
 class ReplayAccepted:
@@ -63,6 +65,23 @@ class InMemoryReplayStore:
             expires_at = now + ttl
             self._entries[identity] = expires_at
             return ReplayAccepted(expires_at)
+
+    def purge(self, plan: PurgeReplayPlan) -> MaintenanceSummary:
+        with self._lock:
+            selected = sorted(
+                (
+                    (identity, expires_at)
+                    for identity, expires_at in self._entries.items()
+                    if expires_at <= plan.cutoff
+                ),
+                key=lambda item: (item[1], item[0][0], item[0][1]),
+            )[: plan.batch_size]
+            if not plan.dry_run:
+                for identity, _ in selected:
+                    self._entries.pop(identity)
+            return MaintenanceSummary(
+                len(selected), 0 if plan.dry_run else len(selected), plan.dry_run
+            )
 
 
 class ReplayStoreHarness:

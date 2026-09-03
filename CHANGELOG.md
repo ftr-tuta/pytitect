@@ -12,6 +12,8 @@ Semantic Versioning with the prerelease rules documented in `docs/versioning.md`
 - Public conformance harnesses for replay, inbox, outbox, checkpoints, receipts, idempotency,
   leases, generations, transaction boundaries, and mutation batches.
 - Finite process-local reference stores for checkpoints, receipts, and generations.
+- Explicit bounded retention plans for idempotency, replay, inbox, receipts, and delivered outbox
+  rows, plus transactional terminal-failure archival.
 
 ### Changed
 
@@ -26,6 +28,10 @@ Semantic Versioning with the prerelease rules documented in `docs/versioning.md`
   boundary, and no longer accept the unused lease `decode_resource` callback.
 - Empty terminal outbox failure reasons are rejected consistently by reference, callback, and
   PostgreSQL stores.
+- Outbox delivery and terminal failure now record UTC transition timestamps and retain rows until
+  an explicit purge or archive plan removes them, keeping duplicate message IDs blocked.
+- Routine idempotency, mutation-batch, and receipt cleanup excludes uncertain outcomes unless
+  explicitly opted in.
 
 ## 1.0.0rc1 - candidate not materialized
 

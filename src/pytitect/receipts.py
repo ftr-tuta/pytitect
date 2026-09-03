@@ -11,6 +11,7 @@ from types import MappingProxyType
 from typing import Protocol, TypeVar
 
 from pytitect.core import JsonScalar, OpaqueId
+from pytitect.maintenance import MaintenanceSummary, PurgeReceiptsPlan
 
 ResultT = TypeVar("ResultT")
 
@@ -184,6 +185,30 @@ class InMemoryReceiptStore[ResultT]:
                 return False
             self._receipts[receipt.receipt_id] = target
             return True
+
+    def purge(self, plan: PurgeReceiptsPlan) -> MaintenanceSummary:
+        terminal = {
+            ReceiptState.COMPLETED,
+            ReceiptState.REJECTED,
+            ReceiptState.CONFLICTED,
+        }
+        if plan.include_uncertain:
+            terminal.add(ReceiptState.UNCERTAIN)
+        with self._lock:
+            selected = sorted(
+                (
+                    receipt
+                    for receipt in self._receipts.values()
+                    if receipt.state in terminal and receipt.updated_at <= plan.cutoff
+                ),
+                key=lambda receipt: (receipt.updated_at, str(receipt.receipt_id)),
+            )[: plan.batch_size]
+            if not plan.dry_run:
+                for receipt in selected:
+                    self._receipts.pop(receipt.receipt_id)
+            return MaintenanceSummary(
+                len(selected), 0 if plan.dry_run else len(selected), plan.dry_run
+            )
 
     def reconcile_uncertain(
         self,

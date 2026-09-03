@@ -16,3 +16,8 @@ authority to publish a result.
 Never silently retry an uncertain non-idempotent effect. Persist the reservation and effect in the
 same consumer-owned transaction when possible. The memory store is bounded, process-local, and not
 appropriate for multi-worker durability.
+
+Expired completed reservations can be removed with `PurgeIdempotencyPlan`. Uncertain reservations
+remain authoritative even after their configured retention instant until a maintenance plan sets
+`include_uncertain=True`; routine cleanup never silently reopens an uncertain identity. The same
+rule applies when `PurgeIdempotencyPlan` is used for retained mutation-batch records.

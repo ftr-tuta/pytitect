@@ -7,11 +7,17 @@ import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
-from typing import Protocol, TypeVar
+from typing import Protocol, TypeVar, cast
 
 from pytitect.core import Clock, OpaqueId, SystemClock
+from pytitect.maintenance import (
+    ArchiveFailedOutboxPlan,
+    MaintenanceSummary,
+    PurgeDeliveredOutboxPlan,
+)
 
 PayloadT = TypeVar("PayloadT")
+PayloadT_co = TypeVar("PayloadT_co", covariant=True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +46,18 @@ class OutboxClaim[PayloadT]:
 
     def __post_init__(self) -> None:
         _utc(self.claimed_until)
+
+
+@dataclass(frozen=True, slots=True)
+class FailedOutboxEnvelope[PayloadT]:
+    envelope: OutboxEnvelope[PayloadT]
+    reason: str
+    failed_at: datetime
+
+    def __post_init__(self) -> None:
+        _utc(self.failed_at)
+        if not self.reason:
+            raise ValueError("outbox failure reason must not be empty")
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,11 +126,21 @@ class OutboxStore(Protocol[PayloadT]):
         self, *, now: datetime, limit: int, claim_ttl: timedelta
     ) -> Sequence[OutboxClaim[PayloadT]]: ...
 
-    def delivered(self, claim: OutboxClaim[PayloadT]) -> bool: ...
+    def delivered(self, claim: OutboxClaim[PayloadT], *, at: datetime) -> bool: ...
 
     def retry(self, claim: OutboxClaim[PayloadT], *, available_at: datetime) -> bool: ...
 
-    def failed(self, claim: OutboxClaim[PayloadT], *, reason: str) -> bool: ...
+    def failed(self, claim: OutboxClaim[PayloadT], *, reason: str, at: datetime) -> bool: ...
+
+
+class OutboxMaintenanceStore(Protocol[PayloadT_co]):
+    def purge_delivered(self, plan: PurgeDeliveredOutboxPlan) -> MaintenanceSummary: ...
+
+    def archive_failed(
+        self,
+        plan: ArchiveFailedOutboxPlan,
+        archive: Callable[[Sequence[FailedOutboxEnvelope[PayloadT_co]]], None],
+    ) -> MaintenanceSummary: ...
 
 
 @dataclass(slots=True)
@@ -120,6 +148,9 @@ class _Stored[PayloadT]:
     envelope: OutboxEnvelope[PayloadT]
     claim_id: str | None = None
     claimed_until: datetime | None = None
+    delivered_at: datetime | None = None
+    failure_reason: str | None = None
+    failed_at: datetime | None = None
 
 
 class InMemoryOutboxStore[PayloadT]:
@@ -130,15 +161,11 @@ class InMemoryOutboxStore[PayloadT]:
             raise ValueError("capacity must be positive")
         self._capacity = capacity
         self._items: dict[OpaqueId[object], _Stored[PayloadT]] = {}
-        self._permanent_failures: dict[OpaqueId[object], str] = {}
         self._lock = threading.RLock()
 
     def add(self, envelope: OutboxEnvelope[PayloadT]) -> OutboxAddResult:
         with self._lock:
-            if (
-                envelope.message_id in self._items
-                or envelope.message_id in self._permanent_failures
-            ):
+            if envelope.message_id in self._items:
                 return OutboxDuplicate()
             if len(self._items) >= self._capacity:
                 raise OverflowError("outbox capacity exceeded")
@@ -164,6 +191,8 @@ class InMemoryOutboxStore[PayloadT]:
                     break
                 if item.envelope.available_at > now:
                     continue
+                if item.delivered_at is not None or item.failure_reason is not None:
+                    continue
                 if item.claimed_until is not None and item.claimed_until > now:
                     continue
                 item.claim_id = uuid.uuid4().hex
@@ -171,12 +200,15 @@ class InMemoryOutboxStore[PayloadT]:
                 claimed.append(OutboxClaim(item.claim_id, item.envelope, item.claimed_until))
         return claimed
 
-    def delivered(self, claim: OutboxClaim[PayloadT]) -> bool:
+    def delivered(self, claim: OutboxClaim[PayloadT], *, at: datetime) -> bool:
+        _utc(at)
         with self._lock:
             item = self._valid(claim)
             if item is None:
                 return False
-            self._items.pop(item.envelope.message_id)
+            item.delivered_at = at
+            item.claim_id = None
+            item.claimed_until = None
             return True
 
     def retry(self, claim: OutboxClaim[PayloadT], *, available_at: datetime) -> bool:
@@ -194,20 +226,78 @@ class InMemoryOutboxStore[PayloadT]:
             item.claimed_until = None
             return True
 
-    def failed(self, claim: OutboxClaim[PayloadT], *, reason: str) -> bool:
+    def failed(self, claim: OutboxClaim[PayloadT], *, reason: str, at: datetime) -> bool:
+        _utc(at)
         if not reason:
             raise ValueError("outbox failure reason must not be empty")
         with self._lock:
             item = self._valid(claim)
             if item is None:
                 return False
-            self._permanent_failures[item.envelope.message_id] = reason
-            self._items.pop(item.envelope.message_id)
+            item.failure_reason = reason
+            item.failed_at = at
+            item.claim_id = None
+            item.claimed_until = None
             return True
+
+    def purge_delivered(self, plan: PurgeDeliveredOutboxPlan) -> MaintenanceSummary:
+        with self._lock:
+            selected = sorted(
+                (
+                    item
+                    for item in self._items.values()
+                    if item.delivered_at is not None and item.delivered_at <= plan.cutoff
+                ),
+                key=lambda item: (item.delivered_at, str(item.envelope.message_id)),
+            )[: plan.batch_size]
+            if not plan.dry_run:
+                for item in selected:
+                    self._items.pop(item.envelope.message_id)
+            return MaintenanceSummary(
+                len(selected), 0 if plan.dry_run else len(selected), plan.dry_run
+            )
+
+    def archive_failed(
+        self,
+        plan: ArchiveFailedOutboxPlan,
+        archive: Callable[[Sequence[FailedOutboxEnvelope[PayloadT]]], None],
+    ) -> MaintenanceSummary:
+        with self._lock:
+            selected = sorted(
+                (
+                    item
+                    for item in self._items.values()
+                    if item.failure_reason is not None
+                    and item.failed_at is not None
+                    and item.failed_at <= plan.cutoff
+                ),
+                key=lambda item: (item.failed_at, str(item.envelope.message_id)),
+            )[: plan.batch_size]
+            if not plan.dry_run and selected:
+                archive(
+                    tuple(
+                        FailedOutboxEnvelope(
+                            item.envelope,
+                            cast(str, item.failure_reason),
+                            cast(datetime, item.failed_at),
+                        )
+                        for item in selected
+                    )
+                )
+                for item in selected:
+                    self._items.pop(item.envelope.message_id)
+            return MaintenanceSummary(
+                len(selected), 0 if plan.dry_run else len(selected), plan.dry_run
+            )
 
     def _valid(self, claim: OutboxClaim[PayloadT]) -> _Stored[PayloadT] | None:
         item = self._items.get(claim.envelope.message_id)
-        if item is None or item.claim_id != claim.claim_id:
+        if (
+            item is None
+            or item.claim_id != claim.claim_id
+            or item.delivered_at is not None
+            or item.failure_reason is not None
+        ):
             return None
         return item
 
@@ -243,7 +333,7 @@ class OneRoundDispatcher[PayloadT]:
         for claim in claims:
             result = self._handler(claim.envelope)
             if isinstance(result, Delivered):
-                delivered += int(self._store.delivered(claim))
+                delivered += int(self._store.delivered(claim, at=now))
             elif (
                 isinstance(result, Retryable)
                 and claim.envelope.attempt + 1 < self._retry.max_attempts
@@ -255,7 +345,7 @@ class OneRoundDispatcher[PayloadT]:
                 reason = (
                     result.reason if isinstance(result, (Retryable, PermanentFailure)) else "failed"
                 )
-                failed += int(self._store.failed(claim, reason=reason))
+                failed += int(self._store.failed(claim, reason=reason, at=now))
         return DispatchSummary(len(claims), delivered, retried, failed)
 
 
@@ -280,7 +370,7 @@ class OutboxStoreHarness[PayloadT]:
             raise AssertionError("outbox claims must be finite, eligible, and ordered")
         claim = claims[0]
         try:
-            store.failed(claim, reason="")
+            store.failed(claim, reason="", at=now)
         except ValueError:
             pass
         else:
@@ -295,17 +385,19 @@ class OutboxStoreHarness[PayloadT]:
         retried = store.claim(now=retry_at, limit=1, claim_ttl=timedelta(seconds=30))
         if len(retried) != 1 or retried[0].envelope.attempt != 1:
             raise AssertionError("a retried outbox item must increment its attempt")
-        if not store.failed(retried[0], reason="terminal"):
+        if not store.failed(retried[0], reason="terminal", at=retry_at):
             raise AssertionError("an authoritative claim must accept terminal failure")
         if not isinstance(store.add(early), OutboxDuplicate):
             raise AssertionError("a terminal failure must keep its identity reserved")
         delivered = store.claim(
             now=now + timedelta(minutes=1), limit=1, claim_ttl=timedelta(seconds=30)
         )
-        if len(delivered) != 1 or not store.delivered(delivered[0]):
+        if len(delivered) != 1 or not store.delivered(delivered[0], at=now + timedelta(minutes=1)):
             raise AssertionError("an authoritative eligible claim must be deliverable")
-        if store.delivered(delivered[0]):
+        if store.delivered(delivered[0], at=now + timedelta(minutes=1)):
             raise AssertionError("a delivered claim must become stale")
+        if not isinstance(store.add(late), OutboxDuplicate):
+            raise AssertionError("a delivered outbox identity must remain reserved")
 
 
 def _utc(value: datetime) -> None:

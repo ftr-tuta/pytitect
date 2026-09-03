@@ -80,6 +80,7 @@ class AbstractOutboxModel(models.Model):
     claimed_until: models.DateTimeField[datetime, datetime] = models.DateTimeField(null=True)
     delivered_at: models.DateTimeField[datetime, datetime] = models.DateTimeField(null=True)
     failure_reason: models.TextField[str, str] = models.TextField(null=True)
+    failed_at: models.DateTimeField[datetime, datetime] = models.DateTimeField(null=True)
 
     class Meta:
         abstract = True

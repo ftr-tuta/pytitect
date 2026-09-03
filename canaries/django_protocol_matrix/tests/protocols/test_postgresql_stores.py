@@ -22,10 +22,13 @@ from pytitect.django import DjangoMutationBatchStore
 from pytitect.django import DjangoOutboxStore
 from pytitect.django import DjangoReceiptStore
 from pytitect.django import DjangoReplayStore
+from pytitect.django import DjangoRetentionMaintenance
 from pytitect.django import DjangoTransactionalOperation
 from pytitect.django import DjangoTransactionBoundary
+from pytitect.django import RetentionIndexModels
 from pytitect.django import TransactionalOperationCommitted
 from pytitect.django import TransactionalOperationRolledBack
+from pytitect.django import build_retention_index_check
 from pytitect.idempotency import Execute
 from pytitect.idempotency import IdempotencyPolicy
 from pytitect.idempotency import IdempotencyScope
@@ -42,6 +45,13 @@ from pytitect.leases import LeaseReleased
 from pytitect.leases import LeaseRenewed
 from pytitect.leases import LeaseStoreHarness
 from pytitect.leases import StaleLease
+from pytitect.maintenance import ArchiveFailedOutboxPlan
+from pytitect.maintenance import MaintenanceSummary
+from pytitect.maintenance import PurgeDeliveredOutboxPlan
+from pytitect.maintenance import PurgeIdempotencyPlan
+from pytitect.maintenance import PurgeInboxPlan
+from pytitect.maintenance import PurgeReceiptsPlan
+from pytitect.maintenance import PurgeReplayPlan
 from pytitect.outbox import OutboxEnvelope
 from pytitect.outbox import OutboxStoreHarness
 from pytitect.receipts import ConfirmedCompleted
@@ -75,6 +85,7 @@ from pytitect_protocol_matrix.mobile_v2.models import IdempotencyRecord
 from pytitect_protocol_matrix.mobile_v2.models import InboxRecord
 from pytitect_protocol_matrix.mobile_v2.models import LeaseRecord
 from pytitect_protocol_matrix.mobile_v2.models import MutationBatchRecord
+from pytitect_protocol_matrix.mobile_v2.models import OutboxArchive
 from pytitect_protocol_matrix.mobile_v2.models import OutboxRecord
 from pytitect_protocol_matrix.mobile_v2.models import ReceiptRecord
 from pytitect_protocol_matrix.mobile_v2.models import ReplayRecord
@@ -146,6 +157,227 @@ def test_postgresql_models_conform_to_public_store_harnesses() -> None:
     ).exercise()
 
 
+def test_postgresql_retention_is_bounded_and_archival_is_atomic() -> None:
+    now = timezone.now()
+    maintenance = DjangoRetentionMaintenance("default")
+    IdempotencyRecord.objects.create(
+        namespace="maintenance",
+        subject="subject",
+        operation="operation",
+        idempotency_key="completed",
+        fingerprint="a" * 64,
+        reservation_token="completed-token",
+        state="completed",
+        expires_at=now,
+        value={"value": 1},
+        updated_at=now,
+    )
+    IdempotencyRecord.objects.create(
+        namespace="maintenance",
+        subject="subject",
+        operation="operation",
+        idempotency_key="uncertain",
+        fingerprint="b" * 64,
+        reservation_token="uncertain-token",
+        state="uncertain",
+        expires_at=now,
+        uncertainty_reason="outcome unknown",
+        updated_at=now,
+    )
+    assert maintenance.purge_idempotency(
+        IdempotencyRecord,
+        PurgeIdempotencyPlan(now, batch_size=1, dry_run=True),
+    ) == MaintenanceSummary(1, 0, True)
+    assert maintenance.purge_idempotency(
+        IdempotencyRecord,
+        PurgeIdempotencyPlan(now),
+    ) == MaintenanceSummary(1, 1, False)
+
+    MutationBatchRecord.objects.create(
+        namespace="maintenance",
+        batch_id="uncertain",
+        fingerprint="c" * 64,
+        reservation_token="batch-token",
+        state="uncertain",
+        total_items=1,
+        next_index=1,
+        receipts=[{"item_id": "item", "result": {"value": 1}}],
+        lease_expires_at=now,
+        retention_expires_at=now,
+        uncertainty_reason="outcome unknown",
+        updated_at=now,
+    )
+    assert maintenance.purge_mutation_batches(
+        MutationBatchRecord,
+        PurgeIdempotencyPlan(now),
+    ) == MaintenanceSummary(0, 0, False)
+    assert maintenance.purge_mutation_batches(
+        MutationBatchRecord,
+        PurgeIdempotencyPlan(now, include_uncertain=True),
+    ) == MaintenanceSummary(1, 1, False)
+    assert IdempotencyRecord.objects.values_list("state", flat=True).get() == "uncertain"
+    assert maintenance.purge_idempotency(
+        IdempotencyRecord,
+        PurgeIdempotencyPlan(now, include_uncertain=True),
+    ) == MaintenanceSummary(1, 1, False)
+
+    for digest in ("a" * 64, "b" * 64):
+        ReplayRecord.objects.create(namespace="maintenance", digest=digest, expires_at=now)
+    assert maintenance.purge_replay(
+        ReplayRecord,
+        PurgeReplayPlan(now, batch_size=1),
+    ) == MaintenanceSummary(1, 1, False)
+    assert ReplayRecord.objects.count() == 1
+
+    InboxRecord.objects.create(
+        namespace="maintenance",
+        source="source",
+        consumer="consumer",
+        message_id="completed",
+        reservation_token="token",
+        expires_at=now + timedelta(minutes=1),
+        completed_at=now,
+    )
+    InboxRecord.objects.create(
+        namespace="maintenance",
+        source="source",
+        consumer="consumer",
+        message_id="expired",
+        reservation_token="token",
+        expires_at=now,
+    )
+    assert maintenance.purge_inbox(
+        InboxRecord,
+        PurgeInboxPlan(now, batch_size=2),
+    ) == MaintenanceSummary(2, 2, False)
+
+    ReceiptRecord.objects.create(
+        receipt_id="completed",
+        kind="mutation",
+        state="completed",
+        created_at=now,
+        updated_at=now,
+        result={"value": 1},
+    )
+    ReceiptRecord.objects.create(
+        receipt_id="uncertain",
+        kind="mutation",
+        state="uncertain",
+        created_at=now,
+        updated_at=now,
+    )
+    assert maintenance.purge_receipts(
+        ReceiptRecord,
+        PurgeReceiptsPlan(now),
+    ) == MaintenanceSummary(1, 1, False)
+    assert ReceiptRecord.objects.values_list("state", flat=True).get() == "uncertain"
+
+    outbox = DjangoOutboxStore.from_model(
+        OutboxRecord,
+        using="default",
+        encode_payload=_json,
+        decode_payload=_json,
+    )
+    for message_id in ("delivered", "failed"):
+        outbox.add(
+            OutboxEnvelope(
+                OpaqueId(message_id),
+                "maintenance",
+                {"message": message_id},
+                now,
+                now,
+            ),
+        )
+    delivered, failed = outbox.claim(
+        now=now,
+        limit=2,
+        claim_ttl=timedelta(minutes=1),
+    )
+    assert outbox.delivered(delivered, at=now)
+    assert outbox.failed(failed, reason="terminal", at=now)
+    assert OutboxRecord.objects.count() == 2
+    assert maintenance.purge_delivered_outbox(
+        OutboxRecord,
+        PurgeDeliveredOutboxPlan(now),
+    ) == MaintenanceSummary(1, 1, False)
+
+    def archive(records, *, using):  # type: ignore[no-untyped-def]
+        for record in records:
+            OutboxArchive.objects.using(using).create(
+                message_id=str(record.envelope.message_id),
+                topic=record.envelope.topic,
+                payload=record.envelope.payload,
+                occurred_at=record.envelope.occurred_at,
+                available_at=record.envelope.available_at,
+                attempt=record.envelope.attempt,
+                failure_reason=record.reason,
+                failed_at=record.failed_at,
+            )
+
+    assert maintenance.archive_failed_outbox(
+        OutboxRecord,
+        ArchiveFailedOutboxPlan(now),
+        decode_payload=_json,
+        archive=archive,
+    ) == MaintenanceSummary(1, 1, False)
+    assert not OutboxRecord.objects.exists()
+    assert OutboxArchive.objects.values_list("message_id", flat=True).get() == "failed"
+
+    rollback_envelope = OutboxEnvelope(
+        OpaqueId("archive-rollback"),
+        "maintenance",
+        {"message": "archive-rollback"},
+        now,
+        now,
+    )
+    outbox.add(rollback_envelope)
+    rollback_claim = outbox.claim(
+        now=now,
+        limit=1,
+        claim_ttl=timedelta(minutes=1),
+    )[0]
+    assert outbox.failed(rollback_claim, reason="terminal", at=now)
+
+    class ArchiveRejected(Exception):
+        pass
+
+    def reject_archive(records, *, using):  # type: ignore[no-untyped-def]
+        record = records[0]
+        OutboxArchive.objects.using(using).create(
+            message_id=str(record.envelope.message_id),
+            topic=record.envelope.topic,
+            payload=record.envelope.payload,
+            occurred_at=record.envelope.occurred_at,
+            available_at=record.envelope.available_at,
+            attempt=record.envelope.attempt,
+            failure_reason=record.reason,
+            failed_at=record.failed_at,
+        )
+        raise ArchiveRejected
+
+    with pytest.raises(ArchiveRejected):
+        maintenance.archive_failed_outbox(
+            OutboxRecord,
+            ArchiveFailedOutboxPlan(now),
+            decode_payload=_json,
+            archive=reject_archive,
+        )
+    assert OutboxRecord.objects.filter(message_id="archive-rollback").exists()
+    assert not OutboxArchive.objects.filter(message_id="archive-rollback").exists()
+
+    check = build_retention_index_check(
+        RetentionIndexModels(
+            idempotency=IdempotencyRecord,
+            mutation_batches=MutationBatchRecord,
+            replay=ReplayRecord,
+            inbox=InboxRecord,
+            receipts=ReceiptRecord,
+            outbox=OutboxRecord,
+        ),
+    )
+    assert check() == []
+
+
 def test_replay_inbox_outbox_and_digest_only_storage() -> None:
     now = timezone.now()
     replay = DjangoReplayStore.from_model(ReplayRecord, using="default")
@@ -196,7 +428,7 @@ def test_replay_inbox_outbox_and_digest_only_storage() -> None:
         )
     claims = outbox.claim(now=now, limit=1, claim_ttl=timedelta(minutes=1))
     assert [str(claim.envelope.message_id) for claim in claims] == ["a"]
-    assert outbox.delivered(claims[0])
+    assert outbox.delivered(claims[0], at=now)
     second = outbox.claim(now=now, limit=1, claim_ttl=timedelta(minutes=1))
     assert [str(claim.envelope.message_id) for claim in second] == ["b"]
 

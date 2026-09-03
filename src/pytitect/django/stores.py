@@ -275,7 +275,7 @@ class _OutboxClaim[PayloadT](Protocol):
 
 
 class _OutboxDelivered[PayloadT](Protocol):
-    def __call__(self, claim: OutboxClaim[PayloadT], *, using: str) -> bool: ...
+    def __call__(self, claim: OutboxClaim[PayloadT], *, at: datetime, using: str) -> bool: ...
 
 
 class _OutboxRetry[PayloadT](Protocol):
@@ -289,7 +289,14 @@ class _OutboxRetry[PayloadT](Protocol):
 
 
 class _OutboxFailed[PayloadT](Protocol):
-    def __call__(self, claim: OutboxClaim[PayloadT], *, reason: str, using: str) -> bool: ...
+    def __call__(
+        self,
+        claim: OutboxClaim[PayloadT],
+        *,
+        reason: str,
+        at: datetime,
+        using: str,
+    ) -> bool: ...
 
 
 class _CheckpointLoad(Protocol):
@@ -452,7 +459,7 @@ class DjangoIdempotencyStore[T]:
             }
             with transaction.atomic(using=using):
                 row = _locked_first(model, using, lookup)
-                if row is not None and row.expires_at <= now:
+                if row is not None and row.expires_at <= now and row.state != "uncertain":
                     row.delete(using=using)
                     row = None
                 if row is None:
@@ -808,11 +815,7 @@ class DjangoMutationBatchStore[T]:
                 row = _locked_first(model, using, lookup)
                 if (
                     row is not None
-                    and row.state
-                    in {
-                        MutationBatchState.COMPLETED.value,
-                        MutationBatchState.UNCERTAIN.value,
-                    }
+                    and row.state == MutationBatchState.COMPLETED.value
                     and row.retention_expires_at is not None
                     and row.retention_expires_at <= now
                 ):
@@ -1395,14 +1398,19 @@ class DjangoOutboxStore[PayloadT]:
                     output.append(OutboxClaim(row.claim_id, envelope, row.claimed_until))
                 return output
 
-        def delivered(claim: OutboxClaim[PayloadT], *, using: str) -> bool:
+        def delivered(claim: OutboxClaim[PayloadT], *, at: datetime, using: str) -> bool:
             _postgresql(using)
-            deleted, _ = (
+            _utc(at)
+            return bool(
                 _manager(model, using)
-                .filter(message_id=str(claim.envelope.message_id), claim_id=claim.claim_id)
-                .delete()
+                .filter(
+                    message_id=str(claim.envelope.message_id),
+                    claim_id=claim.claim_id,
+                    delivered_at__isnull=True,
+                    failure_reason__isnull=True,
+                )
+                .update(delivered_at=at, claim_id=None, claimed_until=None)
             )
-            return bool(deleted)
 
         def retry(claim: OutboxClaim[PayloadT], *, available_at: datetime, using: str) -> bool:
             _postgresql(using)
@@ -1418,14 +1426,31 @@ class DjangoOutboxStore[PayloadT]:
                 )
             )
 
-        def failed(claim: OutboxClaim[PayloadT], *, reason: str, using: str) -> bool:
+        def failed(
+            claim: OutboxClaim[PayloadT],
+            *,
+            reason: str,
+            at: datetime,
+            using: str,
+        ) -> bool:
             _postgresql(using)
+            _utc(at)
             if not reason:
                 raise ValueError("outbox failure reason must not be empty")
             return bool(
                 _manager(model, using)
-                .filter(message_id=str(claim.envelope.message_id), claim_id=claim.claim_id)
-                .update(failure_reason=reason, claim_id=None, claimed_until=None)
+                .filter(
+                    message_id=str(claim.envelope.message_id),
+                    claim_id=claim.claim_id,
+                    delivered_at__isnull=True,
+                    failure_reason__isnull=True,
+                )
+                .update(
+                    failure_reason=reason,
+                    failed_at=at,
+                    claim_id=None,
+                    claimed_until=None,
+                )
             )
 
         return cls.from_callbacks(
@@ -1450,17 +1475,19 @@ class DjangoOutboxStore[PayloadT]:
             raise ValueError("claim limit and ttl must be positive")
         return self._claim(now=now, limit=limit, claim_ttl=claim_ttl, using=self.using)
 
-    def delivered(self, claim: OutboxClaim[PayloadT]) -> bool:
-        return bool(self._delivered(claim, using=self.using))
+    def delivered(self, claim: OutboxClaim[PayloadT], *, at: datetime) -> bool:
+        _utc(at)
+        return bool(self._delivered(claim, at=at, using=self.using))
 
     def retry(self, claim: OutboxClaim[PayloadT], *, available_at: datetime) -> bool:
         _utc(available_at)
         return bool(self._retry(claim, available_at=available_at, using=self.using))
 
-    def failed(self, claim: OutboxClaim[PayloadT], *, reason: str) -> bool:
+    def failed(self, claim: OutboxClaim[PayloadT], *, reason: str, at: datetime) -> bool:
+        _utc(at)
         if not reason:
             raise ValueError("outbox failure reason must not be empty")
-        return bool(self._failed(claim, reason=reason, using=self.using))
+        return bool(self._failed(claim, reason=reason, at=at, using=self.using))
 
 
 class DjangoCheckpointStore:

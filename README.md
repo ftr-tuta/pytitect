@@ -67,6 +67,7 @@ implementation.
   scheduler, worker, or schema.
 - `pytitect.leases`: TTL ownership and monotonic fencing. Authority must be checked under the same
   lock and transaction as the protected mutation.
+- `pytitect.maintenance`: bounded UTC-cutoff retention and archival plans with explicit dry runs.
 - `pytitect.observability`: allowlisted structured events with hashing/redaction.
 - `pytitect.canaries`: consumer-triggered, one-round health probes with no scheduler.
 - `pytitect.sync`: authenticated opaque cursors, bounded mutation batches, dependency graphs,

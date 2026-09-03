@@ -12,11 +12,14 @@ pytitect.checkpoints:Checkpoint
 pytitect.checkpoints:CheckpointBatchResult
 pytitect.checkpoints:CheckpointItem
 pytitect.checkpoints:CheckpointStore
+pytitect.checkpoints:CheckpointStoreHarness
 pytitect.checkpoints:DeferredCheckpointCoordinator
+pytitect.checkpoints:InMemoryCheckpointStore
 pytitect.checkpoints:StaleCheckpoint
 pytitect.checkpoints:StateCommittedCheckpointConfirmed
 pytitect.checkpoints:StateCommittedCheckpointUnconfirmed
 pytitect.checkpoints:TransactionBoundary
+pytitect.checkpoints:TransactionBoundaryHarness
 pytitect.contracts:ContractAccepted
 pytitect.contracts:ContractDecision
 pytitect.contracts:ContractManifest
@@ -98,7 +101,9 @@ pytitect.inbox:InboxCapacityExceeded
 pytitect.inbox:InboxDuplicate
 pytitect.inbox:InboxEnvelope
 pytitect.inbox:InboxInProgress
+pytitect.inbox:InboxScope
 pytitect.inbox:InboxStore
+pytitect.inbox:InboxStoreHarness
 pytitect.leases:FencedCommit
 pytitect.leases:FencedCommitted
 pytitect.leases:InMemoryLeaseStore
@@ -109,6 +114,7 @@ pytitect.leases:LeaseBusy
 pytitect.leases:LeaseReleased
 pytitect.leases:LeaseRenewed
 pytitect.leases:LeaseStore
+pytitect.leases:LeaseStoreHarness
 pytitect.leases:StaleLease
 pytitect.observability:AttributeMode
 pytitect.observability:AttributeRule
@@ -126,6 +132,7 @@ pytitect.outbox:OutboxClaim
 pytitect.outbox:OutboxDuplicate
 pytitect.outbox:OutboxEnvelope
 pytitect.outbox:OutboxStore
+pytitect.outbox:OutboxStoreHarness
 pytitect.outbox:PermanentFailure
 pytitect.outbox:RetryPolicy
 pytitect.outbox:Retryable
@@ -133,6 +140,7 @@ pytitect.receipts:CommandReceipt
 pytitect.receipts:ConfirmedCompleted
 pytitect.receipts:ConfirmedConflicted
 pytitect.receipts:ConfirmedRejected
+pytitect.receipts:InMemoryReceiptStore
 pytitect.receipts:InvalidTransition
 pytitect.receipts:MutationReceipt
 pytitect.receipts:OperationReceipt
@@ -141,6 +149,7 @@ pytitect.receipts:ReceiptKind
 pytitect.receipts:ReceiptReconciler
 pytitect.receipts:ReceiptState
 pytitect.receipts:ReceiptStore
+pytitect.receipts:ReceiptStoreHarness
 pytitect.receipts:ReceiptTransitioned
 pytitect.receipts:RunReceipt
 pytitect.receipts:StillUncertain
@@ -157,6 +166,7 @@ pytitect.security:ReplayAccepted
 pytitect.security:ReplayCapacityExceeded
 pytitect.security:ReplayDetected
 pytitect.security:ReplayStore
+pytitect.security:ReplayStoreHarness
 pytitect.security:SignatureBackend
 pytitect.security:SignedRequest
 pytitect.security:VerifiedContentDigest
@@ -193,6 +203,8 @@ pytitect.sync:DependencyOrder
 pytitect.sync:GenerationCommitted
 pytitect.sync:GenerationGuard
 pytitect.sync:GenerationStore
+pytitect.sync:GenerationStoreHarness
+pytitect.sync:InMemoryGenerationStore
 pytitect.sync:InMemoryMutationBatchStore
 pytitect.sync:MutationBatchCompleted
 pytitect.sync:MutationBatchCoordinator
@@ -202,6 +214,7 @@ pytitect.sync:MutationBatchMarkedUncertain
 pytitect.sync:MutationBatchProgressed
 pytitect.sync:MutationBatchState
 pytitect.sync:MutationBatchStore
+pytitect.sync:MutationBatchStoreHarness
 pytitect.sync:OpaqueCursorCodec
 pytitect.sync:PER_ITEM
 pytitect.sync:StaleGeneration

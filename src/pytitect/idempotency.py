@@ -396,11 +396,17 @@ class IdempotencyStoreHarness[T]:
             Conflict,
         ):
             raise AssertionError("different fingerprint must conflict")
+        renewed_at = now + timedelta(seconds=1)
+        if not isinstance(
+            store.renew(decision.token, now=renewed_at, lease_ttl=lease_ttl),
+            ReservationRenewed,
+        ):
+            raise AssertionError("an authoritative reservation must renew")
         if not isinstance(
             store.complete(
                 decision.token,
                 value,
-                now=now,
+                now=renewed_at,
                 retention_ttl=retention_ttl,
             ),
             ReservationCompleted,
@@ -415,6 +421,44 @@ class IdempotencyStoreHarness[T]:
         )
         if not isinstance(replay, Replay) or replay.value != value:
             raise AssertionError("completed reservation must replay")
+
+        uncertain_decision = store.reserve(scope, "uncertain", first, now=now, lease_ttl=lease_ttl)
+        if not isinstance(uncertain_decision, Execute):
+            raise AssertionError("a new uncertainty identity must execute")
+        if not isinstance(
+            store.mark_uncertain(
+                uncertain_decision.token,
+                "outcome unknown",
+                now=now,
+                retention_ttl=retention_ttl,
+            ),
+            ReservationMarkedUncertain,
+        ):
+            raise AssertionError("an authoritative reservation must become uncertain")
+        if not isinstance(
+            store.reserve(scope, "uncertain", first, now=now, lease_ttl=lease_ttl),
+            Uncertain,
+        ):
+            raise AssertionError("an uncertain result must remain retained")
+
+        abandoned = store.reserve(scope, "abandoned", first, now=now, lease_ttl=lease_ttl)
+        if not isinstance(abandoned, Execute):
+            raise AssertionError("a new abandon identity must execute")
+        if not isinstance(store.abandon(abandoned.token, now=now), ReservationAbandoned):
+            raise AssertionError("an authoritative reservation must be abandonable")
+        if not isinstance(
+            store.reserve(scope, "abandoned", first, now=now, lease_ttl=lease_ttl), Execute
+        ):
+            raise AssertionError("an abandoned identity must be reusable")
+
+        expiring = store.reserve(scope, "expiring", first, now=now, lease_ttl=lease_ttl)
+        if not isinstance(expiring, Execute):
+            raise AssertionError("a new expiring identity must execute")
+        replacement = store.reserve(
+            scope, "expiring", first, now=now + lease_ttl, lease_ttl=lease_ttl
+        )
+        if not isinstance(replacement, Execute) or replacement.token == expiring.token:
+            raise AssertionError("an expired execution reservation must be replaced")
 
 
 def _utc(value: datetime) -> None:

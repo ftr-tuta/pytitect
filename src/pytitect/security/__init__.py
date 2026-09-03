@@ -20,6 +20,7 @@ from pytitect.security.replay import (
     ReplayCapacityExceeded,
     ReplayDetected,
     ReplayStore,
+    ReplayStoreHarness,
 )
 from pytitect.security.signatures import (
     BackendVerification,
@@ -42,6 +43,7 @@ __all__ = [
     "ReplayCapacityExceeded",
     "ReplayDetected",
     "ReplayStore",
+    "ReplayStoreHarness",
     "SignatureBackend",
     "SignedRequest",
     "VerifiedContentDigest",

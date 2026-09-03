@@ -57,6 +57,9 @@ class AbstractReplayModel(models.Model):
 
 
 class AbstractInboxModel(models.Model):
+    namespace: models.CharField[str, str] = models.CharField(max_length=255)
+    source: models.CharField[str, str] = models.CharField(max_length=255)
+    consumer: models.CharField[str, str] = models.CharField(max_length=255)
     message_id: models.CharField[str, str] = models.CharField(max_length=255)
     reservation_token: models.CharField[str, str] = models.CharField(max_length=255)
     expires_at: models.DateTimeField[datetime, datetime] = models.DateTimeField()

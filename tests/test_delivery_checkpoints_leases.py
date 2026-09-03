@@ -5,6 +5,8 @@ from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import pytest
+
 from pytitect import OpaqueId
 from pytitect.checkpoints import (
     AtomicCheckpointConfirmed,
@@ -18,7 +20,9 @@ from pytitect.checkpoints import (
 from pytitect.inbox import (
     InboxAccepted,
     InboxDuplicate,
+    InboxEnvelope,
     InboxInProgress,
+    InboxScope,
     InMemoryInboxStore,
 )
 from pytitect.leases import (
@@ -46,21 +50,37 @@ from pytitect.outbox import (
 def test_inbox_duplicate_in_progress_abandon_and_expiry() -> None:
     now = datetime(2026, 1, 1, tzinfo=UTC)
     store = InMemoryInboxStore(capacity=2)
+    scope = InboxScope("events", "upstream", "projection")
     message: OpaqueId[object] = OpaqueId("message-1")
     assert isinstance(
-        store.begin(message, token="worker-1", now=now, ttl=timedelta(seconds=5)), InboxAccepted
+        store.begin(scope, message, token="worker-1", now=now, ttl=timedelta(seconds=5)),
+        InboxAccepted,
     )
     assert isinstance(
-        store.begin(message, token="worker-2", now=now, ttl=timedelta(seconds=5)), InboxInProgress
+        store.begin(scope, message, token="worker-2", now=now, ttl=timedelta(seconds=5)),
+        InboxInProgress,
     )
-    assert store.abandon(message, token="worker-1")
+    assert store.abandon(scope, message, token="worker-1")
     assert isinstance(
-        store.begin(message, token="worker-2", now=now, ttl=timedelta(seconds=5)), InboxAccepted
+        store.begin(scope, message, token="worker-2", now=now, ttl=timedelta(seconds=5)),
+        InboxAccepted,
     )
-    assert store.complete(message, token="worker-2", now=now)
+    assert store.complete(scope, message, token="worker-2", now=now)
     assert isinstance(
-        store.begin(message, token="worker-3", now=now, ttl=timedelta(seconds=5)), InboxDuplicate
+        store.begin(scope, message, token="worker-3", now=now, ttl=timedelta(seconds=5)),
+        InboxDuplicate,
     )
+    other = InboxScope("events", "upstream", "another-projection")
+    assert isinstance(
+        store.begin(other, message, token="worker-4", now=now, ttl=timedelta(seconds=5)),
+        InboxAccepted,
+    )
+    envelope = InboxEnvelope(scope, message, {"value": 1}, now)
+    assert envelope.scope == scope
+    with pytest.raises(ValueError, match="scope parts"):
+        InboxScope("", "upstream", "projection")
+    with pytest.raises(ValueError, match="timezone-aware UTC"):
+        InboxEnvelope(scope, message, None, datetime(2026, 1, 1))
 
 
 def test_outbox_one_round_delivered_retry_and_permanent() -> None:
@@ -218,3 +238,16 @@ def test_leases_takeover_monotonic_fencing_and_atomic_stale_rejection() -> None:
     assert isinstance(fenced.commit(takeover.lease, lambda: state.append("fresh")), FencedCommitted)
     assert state == ["fresh"]
     assert isinstance(store.release(takeover.lease, now=now + timedelta(seconds=6)), LeaseReleased)
+
+
+def test_reference_lease_store_retains_fencing_authority_with_finite_capacity() -> None:
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    store = InMemoryLeaseStore[str](capacity=1)
+    acquired = store.acquire("first", owner="worker", now=now, ttl=timedelta(minutes=1))
+    assert isinstance(acquired, LeaseAcquired)
+    assert isinstance(store.release(acquired.lease, now=now), LeaseReleased)
+    with pytest.raises(OverflowError, match="lease authority capacity exceeded"):
+        store.acquire("second", owner="worker", now=now, ttl=timedelta(minutes=1))
+    reacquired = store.acquire("first", owner="worker", now=now, ttl=timedelta(minutes=1))
+    assert isinstance(reacquired, LeaseAcquired)
+    assert reacquired.lease.fencing_token == 2

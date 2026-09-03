@@ -11,6 +11,13 @@ with `from_model(...)` for a concrete subclass of a Pytitect abstract model or w
 Pytitect does not provide tables, migrations, routers, or automatic alias selection. Concrete
 models must define the documented unique constraints.
 
+Concrete inbox models must uniquely constrain
+`(namespace, source, consumer, message_id)`. Migrating an older model requires adding and backfilling
+the three scope columns before replacing the `message_id`-only constraint. Pick values from the
+consumer's existing protocol, producer, and handler boundaries; do not derive them from mutable
+display names. Deploy the new schema and code together because the 1.0 adapter has no unscoped
+compatibility fallback.
+
 `DjangoIdempotencyStore`, `DjangoReplayStore`, `DjangoInboxStore`, `DjangoOutboxStore`,
 `DjangoCheckpointStore`, `DjangoReceiptStore`, `DjangoLeaseStore`,
 `DjangoMutationBatchStore`, and
@@ -32,3 +39,8 @@ after Django rolls the transaction back. There is no distributed-transaction fal
 Normal receipt transitions keep `UNCERTAIN` terminal. Only `ReceiptReconciler`, backed by the
 store's locked `reconcile_uncertain()` CAS, may resolve uncertainty to completed, rejected, or
 conflicted, and concurrent reconciliation has a single durable winner.
+
+The public store harnesses exercise the behavioral contract shared by the reference and Django
+stores. Run the relevant harness against callback adapters in unit tests and against concrete models
+on PostgreSQL. The Django protocol-matrix canary demonstrates all harnesses with real row locks and
+transactions.

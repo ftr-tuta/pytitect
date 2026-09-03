@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
@@ -37,6 +38,41 @@ class CheckpointStore(Protocol):
         expected: Checkpoint | None,
         checkpoint: Checkpoint,
     ) -> bool: ...
+
+
+class InMemoryCheckpointStore:
+    """Finite process-local reference checkpoint store."""
+
+    def __init__(self, *, capacity: int = 10_000) -> None:
+        if isinstance(capacity, bool) or not isinstance(capacity, int) or capacity <= 0:
+            raise ValueError("capacity must be a positive integer")
+        self._capacity = capacity
+        self._values: dict[str, Checkpoint] = {}
+        self._lock = threading.RLock()
+
+    def load(self, stream: str) -> Checkpoint | None:
+        _validate_stream(stream)
+        with self._lock:
+            return self._values.get(stream)
+
+    def load_for_update(self, stream: str) -> Checkpoint | None:
+        return self.load(stream)
+
+    def advance(
+        self,
+        stream: str,
+        *,
+        expected: Checkpoint | None,
+        checkpoint: Checkpoint,
+    ) -> bool:
+        _validate_stream(stream)
+        with self._lock:
+            if self._values.get(stream) != expected:
+                return False
+            if stream not in self._values and len(self._values) >= self._capacity:
+                raise OverflowError("checkpoint capacity exceeded")
+            self._values[stream] = checkpoint
+            return True
 
 
 class TransactionBoundary(Protocol):
@@ -146,6 +182,59 @@ class DeferredCheckpointCoordinator[PayloadT]:
         if last is None or self._store.advance(stream, expected=previous, checkpoint=last):
             return StateCommittedCheckpointConfirmed(batch)
         return StateCommittedCheckpointUnconfirmed(batch)
+
+
+class CheckpointStoreHarness:
+    """Reusable behavioral contract for checkpoint stores."""
+
+    def __init__(self, factory: Callable[[], CheckpointStore]) -> None:
+        self._factory = factory
+
+    def exercise(self) -> None:
+        store = self._factory()
+        first = Checkpoint(b"one")
+        second = Checkpoint(b"two")
+        if store.load("stream") is not None or store.load_for_update("stream") is not None:
+            raise AssertionError("a new checkpoint identity must be absent")
+        if not store.advance("stream", expected=None, checkpoint=first):
+            raise AssertionError("an absent checkpoint must accept a None CAS")
+        if store.load("stream") != first or store.load_for_update("stream") != first:
+            raise AssertionError("a committed checkpoint must be loadable")
+        if store.advance("stream", expected=None, checkpoint=second):
+            raise AssertionError("a stale checkpoint CAS must fail")
+        if not store.advance("stream", expected=first, checkpoint=second):
+            raise AssertionError("the current checkpoint CAS must succeed")
+        if store.load("stream") != second:
+            raise AssertionError("checkpoint advancement must be durable")
+
+
+class TransactionBoundaryHarness:
+    """Reusable commit-callback and rollback contract for transaction boundaries."""
+
+    def __init__(self, factory: Callable[[], TransactionBoundary]) -> None:
+        self._factory = factory
+
+    def exercise(self) -> None:
+        boundary = self._factory()
+        callbacks: list[str] = []
+        with boundary.atomic():
+            boundary.on_commit(lambda: callbacks.append("committed"))
+            if callbacks:
+                raise AssertionError("on_commit callbacks must not run inside the transaction")
+        if callbacks != ["committed"]:
+            raise AssertionError("on_commit callbacks must run after a successful commit")
+
+        class RollbackProbe(Exception):
+            pass
+
+        try:
+            with boundary.atomic():
+                boundary.on_commit(lambda: callbacks.append("rolled-back"))
+                raise RollbackProbe
+        except RollbackProbe:
+            pass
+        if callbacks != ["committed"]:
+            raise AssertionError("on_commit callbacks must be discarded on rollback")
 
 
 def _validate_stream(stream: str) -> None:

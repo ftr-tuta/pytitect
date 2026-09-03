@@ -3,82 +3,147 @@ from datetime import timedelta
 from threading import Barrier
 
 import pytest
-from django.db import close_old_connections, transaction
+from django.db import close_old_connections
+from django.db import transaction
 from django.utils import timezone
-
 from pytitect import OpaqueId
-from pytitect.checkpoints import (
-    AtomicCheckpointConfirmed,
-    AtomicCheckpointCoordinator,
-    Checkpoint,
-    CheckpointItem,
-)
-from pytitect.django import (
-    DjangoCheckpointStore,
-    DjangoGenerationStore,
-    DjangoIdempotencyStore,
-    DjangoInboxStore,
-    DjangoLeaseStore,
-    DjangoMutationBatchStore,
-    DjangoOutboxStore,
-    DjangoReceiptStore,
-    DjangoReplayStore,
-    DjangoTransactionBoundary,
-    DjangoTransactionalOperation,
-    TransactionalOperationCommitted,
-    TransactionalOperationRolledBack,
-)
-from pytitect.idempotency import (
-    Execute,
-    IdempotencyPolicy,
-    IdempotencyScope,
-    InProgress,
-    Replay,
-    RequestFingerprint,
-)
-from pytitect.inbox import InboxAccepted, InboxDuplicate
-from pytitect.leases import LeaseAcquired, LeaseReleased, LeaseRenewed, StaleLease
+from pytitect.checkpoints import AtomicCheckpointConfirmed
+from pytitect.checkpoints import AtomicCheckpointCoordinator
+from pytitect.checkpoints import Checkpoint
+from pytitect.checkpoints import CheckpointItem
+from pytitect.checkpoints import CheckpointStoreHarness
+from pytitect.checkpoints import TransactionBoundaryHarness
+from pytitect.django import DjangoCheckpointStore
+from pytitect.django import DjangoGenerationStore
+from pytitect.django import DjangoIdempotencyStore
+from pytitect.django import DjangoInboxStore
+from pytitect.django import DjangoLeaseStore
+from pytitect.django import DjangoMutationBatchStore
+from pytitect.django import DjangoOutboxStore
+from pytitect.django import DjangoReceiptStore
+from pytitect.django import DjangoReplayStore
+from pytitect.django import DjangoTransactionalOperation
+from pytitect.django import DjangoTransactionBoundary
+from pytitect.django import TransactionalOperationCommitted
+from pytitect.django import TransactionalOperationRolledBack
+from pytitect.idempotency import Execute
+from pytitect.idempotency import IdempotencyPolicy
+from pytitect.idempotency import IdempotencyScope
+from pytitect.idempotency import IdempotencyStoreHarness
+from pytitect.idempotency import InProgress
+from pytitect.idempotency import Replay
+from pytitect.idempotency import RequestFingerprint
+from pytitect.inbox import InboxAccepted
+from pytitect.inbox import InboxDuplicate
+from pytitect.inbox import InboxScope
+from pytitect.inbox import InboxStoreHarness
+from pytitect.leases import LeaseAcquired
+from pytitect.leases import LeaseReleased
+from pytitect.leases import LeaseRenewed
+from pytitect.leases import LeaseStoreHarness
+from pytitect.leases import StaleLease
 from pytitect.outbox import OutboxEnvelope
-from pytitect.receipts import (
-    ConfirmedCompleted,
-    ConfirmedRejected,
-    MutationReceipt,
-    ReceiptReconciler,
-    ReceiptState,
-    StillUncertain,
-)
-from pytitect.security import ReplayAccepted, ReplayDetected
-from pytitect.sync import (
-    PER_ITEM,
-    BatchCommitted,
-    BatchInProgress,
-    BatchItem,
-    BatchItemReceipt,
-    BatchReplay,
-    GenerationCommitted,
-    GenerationGuard,
-    MutationBatchCoordinator,
-    MutationBatchState,
-    StaleGeneration,
-)
-from pytitect_protocol_matrix.mobile_v2.models import (
-    CheckpointRecord,
-    DomainMutation,
-    GenerationRecord,
-    IdempotencyRecord,
-    InboxRecord,
-    LeaseRecord,
-    MutationBatchRecord,
-    OutboxRecord,
-    ReceiptRecord,
-    ReplayRecord,
-)
+from pytitect.outbox import OutboxStoreHarness
+from pytitect.receipts import ConfirmedCompleted
+from pytitect.receipts import ConfirmedRejected
+from pytitect.receipts import MutationReceipt
+from pytitect.receipts import ReceiptReconciler
+from pytitect.receipts import ReceiptState
+from pytitect.receipts import ReceiptStoreHarness
+from pytitect.receipts import StillUncertain
+from pytitect.security import ReplayAccepted
+from pytitect.security import ReplayDetected
+from pytitect.security import ReplayStoreHarness
+from pytitect.sync import PER_ITEM
+from pytitect.sync import BatchCommitted
+from pytitect.sync import BatchInProgress
+from pytitect.sync import BatchItem
+from pytitect.sync import BatchItemReceipt
+from pytitect.sync import BatchReplay
+from pytitect.sync import GenerationCommitted
+from pytitect.sync import GenerationGuard
+from pytitect.sync import GenerationStoreHarness
+from pytitect.sync import MutationBatchCoordinator
+from pytitect.sync import MutationBatchState
+from pytitect.sync import MutationBatchStoreHarness
+from pytitect.sync import StaleGeneration
+
+from pytitect_protocol_matrix.mobile_v2.models import CheckpointRecord
+from pytitect_protocol_matrix.mobile_v2.models import DomainMutation
+from pytitect_protocol_matrix.mobile_v2.models import GenerationRecord
+from pytitect_protocol_matrix.mobile_v2.models import IdempotencyRecord
+from pytitect_protocol_matrix.mobile_v2.models import InboxRecord
+from pytitect_protocol_matrix.mobile_v2.models import LeaseRecord
+from pytitect_protocol_matrix.mobile_v2.models import MutationBatchRecord
+from pytitect_protocol_matrix.mobile_v2.models import OutboxRecord
+from pytitect_protocol_matrix.mobile_v2.models import ReceiptRecord
+from pytitect_protocol_matrix.mobile_v2.models import ReplayRecord
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
 def _json(value):  # type: ignore[no-untyped-def]
     return value
+
+
+def test_postgresql_models_conform_to_public_store_harnesses() -> None:
+    now = timezone.now()
+    ReplayStoreHarness(
+        lambda: DjangoReplayStore.from_model(ReplayRecord, using="default"),
+    ).exercise(now=now)
+    InboxStoreHarness(
+        lambda: DjangoInboxStore.from_model(InboxRecord, using="default"),
+    ).exercise(now=now)
+    OutboxStoreHarness(
+        lambda: DjangoOutboxStore.from_model(
+            OutboxRecord,
+            using="default",
+            encode_payload=_json,
+            decode_payload=_json,
+        ),
+    ).exercise(payload={"value": 1}, now=now)
+    with transaction.atomic(using="default"):
+        CheckpointStoreHarness(
+            lambda: DjangoCheckpointStore.from_model(CheckpointRecord, using="default"),
+        ).exercise()
+    ReceiptStoreHarness(
+        lambda: DjangoReceiptStore.from_model(
+            ReceiptRecord,
+            using="default",
+            encode_result=_json,
+            decode_result=_json,
+        ),
+    ).exercise(value={"value": 1}, now=now)
+    IdempotencyStoreHarness(
+        lambda: DjangoIdempotencyStore.from_model(
+            IdempotencyRecord,
+            using="default",
+            encode_value=_json,
+            decode_value=_json,
+        ),
+    ).exercise(value={"value": 1}, now=now)
+    LeaseStoreHarness(
+        lambda: DjangoLeaseStore.from_model(
+            LeaseRecord,
+            using="default",
+            encode_resource=str,
+        ),
+    ).exercise(now=now)
+    with transaction.atomic(using="default"):
+        GenerationStoreHarness(
+            lambda: DjangoGenerationStore.from_model(GenerationRecord, using="default"),
+        ).exercise()
+    MutationBatchStoreHarness(
+        lambda: DjangoMutationBatchStore.from_model(
+            MutationBatchRecord,
+            using="default",
+            encode_result=_json,
+            decode_result=_json,
+        ),
+    ).exercise(result={"value": 1}, now=now)
+    TransactionBoundaryHarness(
+        lambda: DjangoTransactionBoundary("default"),
+    ).exercise()
 
 
 def test_replay_inbox_outbox_and_digest_only_storage() -> None:
@@ -95,14 +160,27 @@ def test_replay_inbox_outbox_and_digest_only_storage() -> None:
     assert len(row.digest) == 64
 
     inbox = DjangoInboxStore.from_model(InboxRecord, using="default")
+    inbox_scope = InboxScope("canary", "upstream", "projection")
     message_id = OpaqueId("message-1")
     assert isinstance(
-        inbox.begin(message_id, token="worker", now=now, ttl=timedelta(minutes=1)),
+        inbox.begin(
+            inbox_scope,
+            message_id,
+            token="worker",
+            now=now,
+            ttl=timedelta(minutes=1),
+        ),
         InboxAccepted,
     )
-    assert inbox.complete(message_id, token="worker", now=now)
+    assert inbox.complete(inbox_scope, message_id, token="worker", now=now)
     assert isinstance(
-        inbox.begin(message_id, token="other", now=now, ttl=timedelta(minutes=1)),
+        inbox.begin(
+            inbox_scope,
+            message_id,
+            token="other",
+            now=now,
+            ttl=timedelta(minutes=1),
+        ),
         InboxDuplicate,
     )
 
@@ -114,7 +192,7 @@ def test_replay_inbox_outbox_and_digest_only_storage() -> None:
     )
     for message in ("b", "a"):
         outbox.add(
-            OutboxEnvelope(OpaqueId(message), "topic", {"id": message}, now, now)
+            OutboxEnvelope(OpaqueId(message), "topic", {"id": message}, now, now),
         )
     claims = outbox.claim(now=now, limit=1, claim_ttl=timedelta(minutes=1))
     assert [str(claim.envelope.message_id) for claim in claims] == ["a"]
@@ -127,7 +205,7 @@ def test_checkpoint_lease_and_generation_guards_share_the_locking_transaction() 
     now = timezone.now()
     boundary = DjangoTransactionBoundary("default")
     checkpoint_store = DjangoCheckpointStore.from_model(
-        CheckpointRecord, using="default"
+        CheckpointRecord, using="default",
     )
     coordinator = AtomicCheckpointCoordinator(checkpoint_store, boundary)
 
@@ -146,7 +224,6 @@ def test_checkpoint_lease_and_generation_guards_share_the_locking_transaction() 
         LeaseRecord,
         using="default",
         encode_resource=str,
-        decode_resource=str,
     )
     acquired = leases.acquire("job", owner="one", now=now, ttl=timedelta(minutes=1))
     assert isinstance(acquired, LeaseAcquired)
@@ -159,7 +236,7 @@ def test_checkpoint_lease_and_generation_guards_share_the_locking_transaction() 
     generations = DjangoGenerationStore.from_model(GenerationRecord, using="default")
     with transaction.atomic(using="default"):
         assert generations.compare_and_set(
-            "orders", "tenant-1", expected=None, generation=2
+            "orders", "tenant-1", expected=None, generation=2,
         )
     guard = GenerationGuard(generations, boundary)
     committed = guard.commit(
@@ -172,7 +249,7 @@ def test_checkpoint_lease_and_generation_guards_share_the_locking_transaction() 
     )
     assert isinstance(committed, GenerationCommitted)
     stale = guard.commit(
-        dataset="orders", partition="tenant-1", expected=1, mutation=lambda: None
+        dataset="orders", partition="tenant-1", expected=1, mutation=lambda: None,
     )
     assert isinstance(stale, StaleGeneration)
 
@@ -242,10 +319,9 @@ def test_concurrent_renewal_makes_the_old_lease_stale() -> None:
         LeaseRecord,
         using="default",
         encode_resource=str,
-        decode_resource=str,
     )
     acquired = leases.acquire(
-        "concurrent-job", owner="worker", now=now, ttl=timedelta(minutes=1)
+        "concurrent-job", owner="worker", now=now, ttl=timedelta(minutes=1),
     )
     assert isinstance(acquired, LeaseAcquired)
     renew_at = now + timedelta(seconds=1)
@@ -297,11 +373,11 @@ def test_mutation_batch_resumes_one_worker_after_a_committed_prefix() -> None:
             "replayed": receipt.replayed,
         },
         decode_value=lambda value: BatchItemReceipt(
-            value["item_id"], value["result"], value["replayed"]
+            value["item_id"], value["result"], value["replayed"],
         ),
     )
     policy = IdempotencyPolicy(
-        timedelta(seconds=5), timedelta(hours=1), timedelta(days=1)
+        timedelta(seconds=5), timedelta(hours=1), timedelta(days=1),
     )
     coordinator = MutationBatchCoordinator(
         batches,
@@ -315,7 +391,9 @@ def test_mutation_batch_resumes_one_worker_after_a_committed_prefix() -> None:
     def crash_after_first(item, using):  # type: ignore[no-untyped-def]
         if item.item_id == "two":
             raise RuntimeError("synthetic crash after committed prefix")
-        row = DomainMutation.objects.using(using).create(protocol="batch", value=item.payload)
+        row = DomainMutation.objects.using(using).create(
+            protocol="batch", value=item.payload,
+        )
         return {"row_id": row.pk}
 
     with pytest.raises(RuntimeError, match="committed prefix"):
@@ -352,7 +430,7 @@ def test_mutation_batch_resumes_one_worker_after_a_committed_prefix() -> None:
                 mutate=lambda item, using: {
                     "row_id": DomainMutation.objects.using(using)
                     .create(protocol="batch", value=item.payload)
-                    .pk
+                    .pk,
                 },
                 idempotency_policy=policy,
             )
@@ -360,11 +438,14 @@ def test_mutation_batch_resumes_one_worker_after_a_committed_prefix() -> None:
             close_old_connections()
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        outcomes = [future.result() for future in [executor.submit(resume) for _ in range(2)]]
+        outcomes = [
+            future.result() for future in [executor.submit(resume) for _ in range(2)]
+        ]
     assert sum(isinstance(outcome, BatchCommitted) for outcome in outcomes) == 1
-    assert sum(
-        isinstance(outcome, (BatchInProgress, BatchReplay)) for outcome in outcomes
-    ) == 1
+    assert (
+        sum(isinstance(outcome, (BatchInProgress, BatchReplay)) for outcome in outcomes)
+        == 1
+    )
     assert DomainMutation.objects.filter(protocol="batch").count() == 2
 
 
@@ -400,7 +481,7 @@ def test_transactional_operation_rolls_back_every_owned_write_and_replays() -> N
         receipts=receipts,
         outbox=outbox,
         idempotency_policy=IdempotencyPolicy(
-            timedelta(minutes=1), timedelta(hours=1), timedelta(days=1)
+            timedelta(minutes=1), timedelta(hours=1), timedelta(days=1),
         ),
         clock=Clock(),
     )
@@ -411,7 +492,7 @@ def test_transactional_operation_rolls_back_every_owned_write_and_replays() -> N
 
     def mutate(using):  # type: ignore[no-untyped-def]
         row = DomainMutation.objects.using(using).create(
-            protocol="transactional", value=7
+            protocol="transactional", value=7,
         )
         return {"mutation_id": row.pk}
 

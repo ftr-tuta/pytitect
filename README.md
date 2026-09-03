@@ -14,6 +14,7 @@ application retains ownership of its database schema, transaction placement, aut
 authorization, routing, process model, and protocol binding. There is no global runtime and no
 automatic protocol selection.
 
+<!-- executable -->
 ```python
 from datetime import timedelta
 
@@ -76,9 +77,10 @@ implementation.
   mutation batches, dependency graphs, and generation guards without a sync engine or scheduler.
 - `pytitect.django`, `pytitect.drf`, and `pytitect.security`: explicit optional adapters.
 
-See the focused guides in [`docs/`](docs/architecture.md), the synthetic examples in
-[`examples/`](examples/django_legacy/README.md), and the public API policy in
-[`docs/versioning.md`](docs/versioning.md). Prerelease adopters should also read the
+See the focused guides in [`docs/`](docs/architecture.md), the executable
+[`adoption path`](docs/adoption.md), the synthetic
+[`Django/PostgreSQL reference`](examples/django_reference/README.md), and the
+[`public API stability policy`](docs/api-stability.md). Prerelease adopters should also read the
 [`1.0 migration guide`](docs/migration-1.0.md).
 
 ## Security boundaries

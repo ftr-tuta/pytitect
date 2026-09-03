@@ -53,5 +53,11 @@ Rows with a null `failed_at` remain excluded from archival until the consumer re
 Archive callbacks must write durable rows using the database alias supplied by
 `DjangoRetentionMaintenance`. Do not perform external effects in that transaction.
 
+## Opaque cursor payloads
+
+Cursor payloads must contain at least one byte. Replace any prerelease call that encoded an empty
+payload with an explicit, bounded protocol value before upgrading; the encoder now rejects empty
+payloads instead of emitting a cursor that its strict decoder cannot accept.
+
 Use the public store harnesses in tests for each custom store or callback adapter. Model-backed
 Django stores must also be exercised on PostgreSQL; SQLite cannot validate the locking contract.

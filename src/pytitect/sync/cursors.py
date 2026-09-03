@@ -84,6 +84,8 @@ class OpaqueCursorCodec:
     ) -> str:
         selected = _algorithm(algorithm)
         _context(dataset, partition, kid, self._limits)
+        if not payload:
+            raise ValueError("cursor payload must not be empty")
         if len(payload) > self._limits.max_payload_bytes:
             raise ValueError("cursor payload exceeds max_payload_bytes")
         header: dict[str, JsonValue] = {

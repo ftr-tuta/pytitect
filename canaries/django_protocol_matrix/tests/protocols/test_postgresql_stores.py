@@ -215,14 +215,18 @@ def test_postgresql_retention_is_bounded_and_archival_is_atomic() -> None:
         MutationBatchRecord,
         PurgeIdempotencyPlan(now, include_uncertain=True),
     ) == MaintenanceSummary(1, 1, False)
-    assert IdempotencyRecord.objects.values_list("state", flat=True).get() == "uncertain"
+    assert (
+        IdempotencyRecord.objects.values_list("state", flat=True).get() == "uncertain"
+    )
     assert maintenance.purge_idempotency(
         IdempotencyRecord,
         PurgeIdempotencyPlan(now, include_uncertain=True),
     ) == MaintenanceSummary(1, 1, False)
 
     for digest in ("a" * 64, "b" * 64):
-        ReplayRecord.objects.create(namespace="maintenance", digest=digest, expires_at=now)
+        ReplayRecord.objects.create(
+            namespace="maintenance", digest=digest, expires_at=now
+        )
     assert maintenance.purge_replay(
         ReplayRecord,
         PurgeReplayPlan(now, batch_size=1),
@@ -437,7 +441,8 @@ def test_checkpoint_lease_and_generation_guards_share_the_locking_transaction() 
     now = timezone.now()
     boundary = DjangoTransactionBoundary("default")
     checkpoint_store = DjangoCheckpointStore.from_model(
-        CheckpointRecord, using="default",
+        CheckpointRecord,
+        using="default",
     )
     coordinator = AtomicCheckpointCoordinator(checkpoint_store, boundary)
 
@@ -468,7 +473,10 @@ def test_checkpoint_lease_and_generation_guards_share_the_locking_transaction() 
     generations = DjangoGenerationStore.from_model(GenerationRecord, using="default")
     with transaction.atomic(using="default"):
         assert generations.compare_and_set(
-            "orders", "tenant-1", expected=None, generation=2,
+            "orders",
+            "tenant-1",
+            expected=None,
+            generation=2,
         )
     guard = GenerationGuard(generations, boundary)
     committed = guard.commit(
@@ -481,7 +489,10 @@ def test_checkpoint_lease_and_generation_guards_share_the_locking_transaction() 
     )
     assert isinstance(committed, GenerationCommitted)
     stale = guard.commit(
-        dataset="orders", partition="tenant-1", expected=1, mutation=lambda: None,
+        dataset="orders",
+        partition="tenant-1",
+        expected=1,
+        mutation=lambda: None,
     )
     assert isinstance(stale, StaleGeneration)
 
@@ -553,7 +564,10 @@ def test_concurrent_renewal_makes_the_old_lease_stale() -> None:
         encode_resource=str,
     )
     acquired = leases.acquire(
-        "concurrent-job", owner="worker", now=now, ttl=timedelta(minutes=1),
+        "concurrent-job",
+        owner="worker",
+        now=now,
+        ttl=timedelta(minutes=1),
     )
     assert isinstance(acquired, LeaseAcquired)
     renew_at = now + timedelta(seconds=1)
@@ -605,11 +619,15 @@ def test_mutation_batch_resumes_one_worker_after_a_committed_prefix() -> None:
             "replayed": receipt.replayed,
         },
         decode_value=lambda value: BatchItemReceipt(
-            value["item_id"], value["result"], value["replayed"],
+            value["item_id"],
+            value["result"],
+            value["replayed"],
         ),
     )
     policy = IdempotencyPolicy(
-        timedelta(seconds=5), timedelta(hours=1), timedelta(days=1),
+        timedelta(seconds=5),
+        timedelta(hours=1),
+        timedelta(days=1),
     )
     coordinator = MutationBatchCoordinator(
         batches,
@@ -624,7 +642,8 @@ def test_mutation_batch_resumes_one_worker_after_a_committed_prefix() -> None:
         if item.item_id == "two":
             raise RuntimeError("synthetic crash after committed prefix")
         row = DomainMutation.objects.using(using).create(
-            protocol="batch", value=item.payload,
+            protocol="batch",
+            value=item.payload,
         )
         return {"row_id": row.pk}
 
@@ -681,6 +700,114 @@ def test_mutation_batch_resumes_one_worker_after_a_committed_prefix() -> None:
     assert DomainMutation.objects.filter(protocol="batch").count() == 2
 
 
+def test_mutation_batch_recovers_a_crash_before_final_confirmation() -> None:
+    now = timezone.now()
+
+    class Clock:
+        def __init__(self, value):  # type: ignore[no-untyped-def]
+            self.value = value
+
+        def now(self):  # type: ignore[no-untyped-def]
+            return self.value
+
+    clock = Clock(now)
+    durable_batches = DjangoMutationBatchStore.from_model(
+        MutationBatchRecord,
+        using="default",
+        encode_result=_json,
+        decode_result=_json,
+    )
+
+    class FinalConfirmationCrash:
+        using = "default"
+        fail_once = True
+
+        def begin(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            return durable_batches.begin(*args, **kwargs)
+
+        def renew(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            return durable_batches.renew(*args, **kwargs)
+
+        def advance(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            return durable_batches.advance(*args, **kwargs)
+
+        def complete(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            if self.fail_once:
+                self.fail_once = False
+                raise RuntimeError("synthetic crash before final confirmation")
+            return durable_batches.complete(*args, **kwargs)
+
+        def mark_uncertain(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            return durable_batches.mark_uncertain(*args, **kwargs)
+
+    batches = FinalConfirmationCrash()
+    items = DjangoIdempotencyStore.from_model(
+        IdempotencyRecord,
+        using="default",
+        encode_value=lambda receipt: {
+            "item_id": receipt.item_id,
+            "result": receipt.result,
+            "replayed": receipt.replayed,
+        },
+        decode_value=lambda value: BatchItemReceipt(
+            value["item_id"],
+            value["result"],
+            value["replayed"],
+        ),
+    )
+    policy = IdempotencyPolicy(
+        timedelta(seconds=5),
+        timedelta(hours=1),
+        timedelta(days=1),
+    )
+    coordinator = MutationBatchCoordinator(
+        batches,
+        items,
+        DjangoTransactionBoundary("default"),
+        using="default",
+        clock=clock,
+    )
+    payloads = (BatchItem("final-item", 3),)
+
+    with pytest.raises(RuntimeError, match="before final confirmation"):
+        coordinator.execute(
+            batch_id="final-confirmation-crash",
+            items=payloads,
+            policy=PER_ITEM,
+            mutate=lambda item, using: {
+                "row_id": DomainMutation.objects.using(using)
+                .create(protocol="final-crash", value=item.payload)
+                .pk,
+            },
+            idempotency_policy=policy,
+        )
+    record = MutationBatchRecord.objects.get(batch_id="final-confirmation-crash")
+    assert record.state == MutationBatchState.PARTIALLY_COMMITTED
+    assert record.next_index == 1
+    assert DomainMutation.objects.filter(protocol="final-crash").count() == 1
+
+    before_expiry = coordinator.execute(
+        batch_id="final-confirmation-crash",
+        items=payloads,
+        policy=PER_ITEM,
+        mutate=lambda item, using: pytest.fail("retry repeated a retained item"),
+        idempotency_policy=policy,
+    )
+    assert isinstance(before_expiry, BatchInProgress)
+
+    clock.value += timedelta(seconds=5)
+    recovered = coordinator.execute(
+        batch_id="final-confirmation-crash",
+        items=payloads,
+        policy=PER_ITEM,
+        mutate=lambda item, using: pytest.fail("recovery repeated a retained item"),
+        idempotency_policy=policy,
+    )
+    assert isinstance(recovered, BatchCommitted)
+    assert recovered.receipts[0].replayed is True
+    assert DomainMutation.objects.filter(protocol="final-crash").count() == 1
+
+
 def test_transactional_operation_rolls_back_every_owned_write_and_replays() -> None:
     now = timezone.now()
 
@@ -713,7 +840,9 @@ def test_transactional_operation_rolls_back_every_owned_write_and_replays() -> N
         receipts=receipts,
         outbox=outbox,
         idempotency_policy=IdempotencyPolicy(
-            timedelta(minutes=1), timedelta(hours=1), timedelta(days=1),
+            timedelta(minutes=1),
+            timedelta(hours=1),
+            timedelta(days=1),
         ),
         clock=Clock(),
     )
@@ -724,7 +853,8 @@ def test_transactional_operation_rolls_back_every_owned_write_and_replays() -> N
 
     def mutate(using):  # type: ignore[no-untyped-def]
         row = DomainMutation.objects.using(using).create(
-            protocol="transactional", value=7,
+            protocol="transactional",
+            value=7,
         )
         return {"mutation_id": row.pk}
 

@@ -1,0 +1,152 @@
+{
+  "components": {
+    "schemas": {
+      "BootstrapRequest": {
+        "$ref": "../../interop/titect-sync/1/schema.json#/$defs/bootstrapRequestPayload"
+      },
+      "BootstrapResponse": {
+        "$ref": "../../interop/titect-sync/1/schema.json#/$defs/bootstrapResponsePayload"
+      },
+      "MutationOutcome": {
+        "$ref": "../../interop/titect-sync/1/schema.json#/$defs/mutationOutcomePayload"
+      },
+      "MutationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "value": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "idempotency_key",
+          "value"
+        ],
+        "type": "object"
+      },
+      "MutationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "applied",
+              "replayed",
+              "conflict",
+              "processing",
+              "uncertain"
+            ]
+          },
+          "value": {
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "state",
+          "value"
+        ],
+        "type": "object"
+      },
+      "SyncDocument": {
+        "$ref": "../../interop/titect-sync/1/schema.json"
+      }
+    }
+  },
+  "info": {
+    "title": "Synthetic Pytitect reference",
+    "version": "titect-sync/1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/reference/legacy/mutations/{mutation_id}": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mutation_id",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MutationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Mutation completed or replayed."
+          },
+          "409": {
+            "description": "Mutation identity is busy, conflicting, or uncertain."
+          }
+        },
+        "summary": "Legacy boundary over the shared mutation service"
+      }
+    },
+    "/reference/sync/1/mutations/{mutation_id}": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mutation_id",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MutationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Mutation completed or replayed."
+          },
+          "409": {
+            "description": "Mutation identity is busy, conflicting, or uncertain."
+          }
+        },
+        "summary": "titect-sync/1 boundary over the shared mutation service"
+      }
+    }
+  }
+}

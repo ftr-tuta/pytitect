@@ -97,6 +97,8 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101"]
 "tests/test_django_drf.py" = ["E402"]
+"**/migrations/*.py" = ["RUF012"]
+"examples/django_reference/reference_app/models.py" = ["RUF012"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -116,4 +118,4 @@ branch = true
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
-fail_under = 75
+fail_under = 85

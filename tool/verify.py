@@ -76,6 +76,8 @@ def main() -> int:
     run(python, "tool/release_tree.py")
     run(python, "tool/api_snapshot.py")
     run(python, "tool/sync_bundle.py")
+    run(python, "tool/message_bundle.py")
+    run(python, "tool/event_platform.py")
     run(python, "tool/reference_project.py")
     run(python, "tool/optional_imports.py")
     forbidden = [

@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
-  "package_version": "1.0.0",
-  "release_tag": "v1.0.0",
+  "package_version": "1.6.0rc1",
+  "release_tag": "v1.6.0-rc.1",
   "distribution_authority": "github-releases",
   "canonicalization": "RFC 8785 with I-JSON inputs",
   "fixtures": [

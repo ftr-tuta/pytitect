@@ -7,11 +7,6 @@ updates:
     groups:
       python-development:
         dependency-type: development
-    ignore:
-      - dependency-name: django
-        versions: [">=5.3"]
-      - dependency-name: django-stubs
-        versions: [">=5.3"]
   - package-ecosystem: uv
     directory: /canaries/django_protocol_matrix
     schedule:
@@ -19,9 +14,6 @@ updates:
     groups:
       django-canary:
         patterns: ["*"]
-    ignore:
-      - dependency-name: django
-        versions: [">=5.3"]
   - package-ecosystem: github-actions
     directory: /
     schedule:

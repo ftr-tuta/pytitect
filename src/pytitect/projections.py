@@ -125,8 +125,7 @@ class InMemoryProjectionStore:
         if projection_version <= 0:
             raise ValueError("projection version must be positive")
         if any(
-            later.global_position <= earlier.global_position
-            for earlier, later in pairwise(events)
+            later.global_position <= earlier.global_position for earlier, later in pairwise(events)
         ):
             raise ValueError("projection events must be strictly ordered")
         with self._lock:

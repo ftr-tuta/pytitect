@@ -21,9 +21,7 @@ one durability boundary and one transport at a time.
 ```python
 from pytitect.messaging import MessageType, MessageTypeRegistry, Route, RoutingTable
 
-types = MessageTypeRegistry(
-    [MessageType("example.changed.v1", "urn:example:schema:changed:1")]
-)
+types = MessageTypeRegistry([MessageType("example.changed.v1", "urn:example:schema:changed:1")])
 routes = RoutingTable([Route("example.changed.v1", "logical-changes")])
 assert types.resolve("example.changed.v1").version == 1
 assert routes.destination_for("example.changed.v1") == "logical-changes"

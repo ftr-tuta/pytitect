@@ -12,23 +12,37 @@ ROOT = Path(__file__).resolve().parents[1]
 SNAPSHOT = ROOT / "tool" / "public-api.txt"
 MODULES = (
     "pytitect",
+    "pytitect.aio",
+    "pytitect.application",
+    "pytitect.aws",
     "pytitect.canaries",
     "pytitect.checkpoints",
     "pytitect.contracts",
     "pytitect.core",
     "pytitect.django",
     "pytitect.drf",
+    "pytitect.event_sourcing",
+    "pytitect.fastapi",
+    "pytitect.faststream_nats",
     "pytitect.http",
     "pytitect.idempotency",
     "pytitect.inbox",
+    "pytitect.jobs",
     "pytitect.leases",
     "pytitect.maintenance",
+    "pytitect.messaging",
+    "pytitect.nats",
     "pytitect.observability",
+    "pytitect.operations",
     "pytitect.outbox",
+    "pytitect.processes",
+    "pytitect.projections",
     "pytitect.receipts",
     "pytitect.security",
+    "pytitect.sqlalchemy",
     "pytitect.sync",
     "pytitect.trace",
+    "pytitect.testing",
 )
 
 
@@ -54,10 +68,20 @@ def public_api() -> list[str]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--print", action="store_true", dest="print_only")
+    parser.add_argument("--update", action="store_true")
     args = parser.parse_args()
     actual = public_api()
     if args.print_only:
         print("\n".join(actual))
+        return 0
+    if args.update:
+        SNAPSHOT.write_text(
+            "# Generated intentionally by: python tool/api_snapshot.py --update\n"
+            + "\n".join(actual)
+            + "\n",
+            encoding="utf-8",
+        )
+        print(f"Updated public API snapshot ({len(actual)} symbols).")
         return 0
     expected = [
         line for line in SNAPSHOT.read_text().splitlines() if line and not line.startswith("#")

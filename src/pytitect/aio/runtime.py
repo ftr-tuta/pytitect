@@ -167,9 +167,12 @@ class AsyncRelay:
                     )
                     counters[2] += int(await self._store.failed(claim, reason=reason, at=now))
 
+        tasks: list[asyncio.Task[None]] = []
         async with asyncio.TaskGroup() as group:
             for claim in claims:
-                group.create_task(publish(claim))
+                tasks.append(group.create_task(publish(claim)))
+        if any(task.cancelled() for task in tasks):
+            raise asyncio.CancelledError
         return RelaySummary(len(claims), *counters)
 
 

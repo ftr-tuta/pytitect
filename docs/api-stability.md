@@ -11,18 +11,22 @@ APIs follow semantic-versioning compatibility after 1.0.
 
 ## Preview
 
-All symbols exported by `pytitect.sync` are Preview in 1.0. The neutral `titect-sync/1` bundle is
-versioned and closed, but bilateral interoperability with an external client has not yet been proven.
-Preview APIs require an explicit changelog entry and migration guidance when changed.
+Exports from `pytitect.sync`, `pytitect.messaging`, `pytitect.application`, `pytitect.aio`,
+`pytitect.operations`, `pytitect.processes`, `pytitect.jobs`, `pytitect.projections`, and
+`pytitect.event_sourcing` are Preview during the 1.6 release-candidate series. Versioned wire bundles
+are closed independently from Python API maturity. Preview APIs require an explicit changelog entry
+and migration guidance when changed.
 
 ## Testing
 
-All public names ending in `Harness`, plus exports from `pytitect.canaries`, are Testing APIs. They
-exist to verify consumer implementations and bounded health probes, not as production orchestration.
-This rule takes precedence over module-level classifications.
+All public names ending in `Harness`, plus exports from `pytitect.canaries` and `pytitect.testing`,
+are Testing APIs. They exist to verify consumer implementations, fault behavior, and bounded health
+probes, not as production orchestration. This rule takes precedence over module classifications.
 
 ## Low-level
 
-Exports from `pytitect.contracts`, `pytitect.django`, `pytitect.drf`, and `pytitect.security` are
-Low-level. They are supported, but consumers must explicitly supply framework configuration,
-persistence, transactions, key resolution, routing, and policy. No automatic binding is implied.
+Exports from `pytitect.contracts`, `pytitect.django`, `pytitect.drf`, `pytitect.security`,
+`pytitect.sqlalchemy`, `pytitect.nats`, `pytitect.aws`, `pytitect.fastapi`, and
+`pytitect.faststream_nats` are Low-level. They are supported, but consumers must explicitly supply
+framework configuration, persistence, transactions, key resolution, routing, topology, lifecycle,
+and policy. No automatic binding is implied.

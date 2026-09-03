@@ -5,6 +5,51 @@ Semantic Versioning with the prerelease rules documented in `docs/versioning.md`
 
 ## Unreleased
 
+## 1.6.0rc1 - 2026-09-03
+
+### Added
+
+- Closed CloudEvents 1.0.2 `titect-message/1` envelopes, canonical bounded JSON codecs,
+  correlation/causation identity, immutable registries, separate routing, typed transport results,
+  and deterministic JSON Schema, AsyncAPI 3.1, fixture, and manifest artifacts.
+- Explicit command/query registries and pure decisions that distinguish domain events, integration
+  events, commands, and tasks.
+- Separate async reliability ports, finite process-local stores and harnesses, explicit units of
+  work, bounded command/query runtimes, outbox relay, inbox consumer, backpressure, timeouts,
+  cancellation propagation, and durable rejected-delivery quarantine contracts.
+- Consumer-owned SQLAlchemy 2 async PostgreSQL model shapes, stores, `SKIP LOCKED` claims, and one
+  explicit `AsyncSession` per unit of work.
+- NATS JetStream acknowledged publication, pull delivery with ACK/NAK/TERM, message-ID deduplication
+  hints, typed failures, and inert validate/plan/apply topology operations.
+- AWS custom EventBridge bus publication and SQS Standard delivery through a bounded explicit
+  executor, including partial-failure classification, visibility retries, delete acknowledgement,
+  full-envelope `Detail`, and explicit topology plans.
+- Route-free FastAPI context, idempotency, Problem Details, OpenAPI, and lifespan helpers; a bounded
+  Django sync/async transaction bridge; and an unregistered FastStream/NATS handler adapter.
+- Role-specific readiness, bounded metrics and structured observations, transport Trace Context,
+  structured-concurrency supervision, and graceful finite shutdown.
+- Optimistic process managers with explicit compensations and fenced durable timers; jobs with
+  claims, leases, retries, terminal states, and one-shot, fixed-interval, or consumer-policy
+  scheduling; atomic projection checkpoints with finite resumable rebuilds; and optimistic event
+  streams with bounded pages and optional snapshots.
+- Synthetic FastAPI and Django composition examples, deterministic fault injection, a crash matrix,
+  PostgreSQL 15–18/NATS 2.14.5/LocalStack 4.14.0 opt-in canaries, and a protected OIDC AWS canary.
+
+### Changed
+
+- Expanded optional Django support to `>=5.2.1,<6.2` while retaining DRF `>=3.16,<4`.
+- Classified event-platform contracts and runtimes as Preview, adapters as Low-level, and harnesses
+  and fault injection as Testing during the release-candidate series.
+- Expanded wheel smokes, optional-import checks, manifests, API snapshots, documentation checks, and
+  release verification for every event-platform extra.
+
+### Security
+
+- Terminal broker settlement now requires durable quarantine. Payload retention is disabled by
+  default; records contain bounded metadata, a SHA-256 digest, and a sanitized reason.
+- The release workflow remains GitHub-only and emits wheel, sdist, SHA-256 checksums, SPDX SBOM, and
+  provenance. PyPI and TestPyPI publication remain disabled.
+
 ## 1.0.0 - 2026-09-03
 
 ### Changed

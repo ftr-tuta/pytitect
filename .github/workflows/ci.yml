@@ -88,7 +88,7 @@ jobs:
       - run: uv run pytest --no-cov tests/test_django_drf.py
 
   django-latest:
-    name: CI / Django 5.2 latest
+    name: CI / Django 6.1 latest
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -99,7 +99,23 @@ jobs:
         with:
           version: "0.11.7"
       - run: uv sync --all-extras --frozen
+      - run: uv pip install "Django>=6.1,<6.2"
       - run: uv run pytest --no-cov tests/test_django_drf.py
+
+  django-6-0:
+    name: CI / Django 6.0
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.11.7"
+      - run: uv sync --all-extras --frozen
+      - run: uv pip install "Django>=6.0,<6.1"
+      - run: uv run pytest --no-cov tests/test_django_drf.py tests/test_django_event_processing.py
 
   postgres:
     name: CI / PostgreSQL
@@ -268,10 +284,35 @@ jobs:
           tests/test_sync_contracts.py
           tests/test_trace.py
 
+  event-platform-contracts:
+    name: CI / Event platform contracts
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.11.7"
+      - run: uv sync --all-extras --frozen
+      - run: >-
+          uv run pytest --no-cov
+          tests/test_messaging.py
+          tests/test_aio_runtime.py
+          tests/test_aws_adapter.py
+          tests/test_nats_adapter.py
+          tests/test_processes.py
+          tests/test_jobs.py
+          tests/test_event_sourcing_projections.py
+          tests/test_fault_injection.py
+      - run: uv run python tool/message_bundle.py
+      - run: uv run python tool/event_platform.py
+
   required:
     name: CI / Required
     if: always()
-    needs: [lint, typecheck, unit, django-minimum, django-latest, postgres, package, django-canary, django-reference, contracts-security]
+    needs: [lint, typecheck, unit, django-minimum, django-6-0, django-latest, postgres, package, django-canary, django-reference, contracts-security, event-platform-contracts]
     runs-on: ubuntu-24.04
     steps:
       - name: Require every CI job

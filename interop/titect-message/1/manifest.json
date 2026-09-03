@@ -1,7 +1,12 @@
 {
   "algorithm": "sha256",
-  "digest": "2ba168eb0e5f4c8635f360f302163923384f3b2b28c77d4b5452bc564bb727e4",
+  "digest": "f1b9ef9f3d6677cc70ba589c3e086d75f6b5bb1250ac805aa193aafcc4326ef0",
   "files": [
+    {
+      "path": "asyncapi.json",
+      "sha256": "37bab1c0a0bd16743e76449c1afa01b4db82d3a646b074758f432f18c67cf4c0",
+      "size": 475
+    },
     {
       "path": "capabilities.json",
       "sha256": "916ca04018719305b3aa9e5193467ad8c2845ef19626867be6643f7b7918dd37",

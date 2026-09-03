@@ -1,8 +1,8 @@
 # Pytitect
 
 Pytitect is a collection of explicit, consumer-owned building blocks for reliable Python
-services. Its core has no runtime dependencies. Optional adapters support Django 5.2, Django
-REST Framework, drf-spectacular, RFC 8785, DPoP, and HTTP Message Signatures.
+services. Its core has no runtime dependencies. Optional adapters support Django, FastAPI,
+SQLAlchemy/PostgreSQL, NATS JetStream, AWS EventBridge/SQS, FastStream, and security contracts.
 
 > **Release status:** the source version maps deterministically to a protected repository tag.
 > Published tags, assets, and notes are authoritative in GitHub Releases; package-index publication
@@ -52,11 +52,14 @@ pip install 'pytitect[django]'
 pip install 'pytitect[drf,contracts]'
 pip install 'pytitect[security]'
 pip install 'pytitect[sync]'
+pip install 'pytitect[fastapi,sqlalchemy,nats]'
+pip install 'pytitect[aws]'
+pip install 'pytitect[faststream-nats]'
 ```
 
-The supported web framework line is deliberately narrow: Django `5.2.x` and DRF `>=3.16,<4`.
-The `pytitect.aio` namespace is reserved; this release has no FastAPI, ASGI, or async-store
-implementation.
+The Stable 1.0 surface is unchanged. Event-platform contracts and runtimes are Preview APIs;
+optional framework and transport adapters are Low-level APIs. Every adapter requires explicit
+composition.
 
 ## Architecture and package map
 
@@ -77,12 +80,20 @@ implementation.
 - `pytitect.sync`: the neutral `titect-sync/1` contracts, authenticated opaque cursors, bounded
   mutation batches, dependency graphs, and generation guards without a sync engine or scheduler.
 - `pytitect.django`, `pytitect.drf`, and `pytitect.security`: explicit optional adapters.
+- `pytitect.messaging`, `pytitect.application`, and `pytitect.aio`: versioned messages, pure
+  decisions, separate async ports, finite stores, and bounded runtimes.
+- `pytitect.nats`, `pytitect.aws`, `pytitect.fastapi`, `pytitect.sqlalchemy`, and
+  `pytitect.faststream_nats`: explicit Low-level adapters with no automatic binding or lifecycle.
+- `pytitect.processes`, `pytitect.jobs`, `pytitect.projections`, and `pytitect.event_sourcing`:
+  optimistic Preview workflow and persistence contracts.
 
 See the focused guides in [`docs/`](docs/architecture.md), the executable
 [`adoption path`](docs/adoption.md), the synthetic
 [`Django/PostgreSQL reference`](examples/django_reference/README.md), and the
 [`public API stability policy`](docs/api-stability.md). Prerelease adopters should also read the
 [`1.0 migration guide`](docs/migration-1.0.md).
+Event-platform adopters should start with the [`1.6 adoption guide`](docs/event-platform-adoption.md)
+and review its [`compatibility matrix`](docs/event-platform-compatibility.md).
 
 ## Security boundaries
 

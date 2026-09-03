@@ -15,6 +15,11 @@ MANIFEST = BUNDLE / "manifest.json"
 
 
 def main() -> int:
+    asyncapi = json.loads((BUNDLE / "asyncapi.json").read_text(encoding="utf-8"))
+    if asyncapi.get("asyncapi") != "3.1.0":
+        raise SystemExit("message AsyncAPI document must use version 3.1.0")
+    if asyncapi.get("channels") != {} or asyncapi.get("operations") != {}:
+        raise SystemExit("message AsyncAPI document must remain route-neutral")
     positive = (BUNDLE / "fixtures" / "positive" / "message.json").read_bytes().rstrip(b"\n")
     codec = JsonMessageCodec()
     if codec.encode(codec.decode(positive)) != positive:

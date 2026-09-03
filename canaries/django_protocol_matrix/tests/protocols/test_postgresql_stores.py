@@ -184,7 +184,7 @@ def test_two_workers_serialize_idempotency_and_skip_locked_outbox_claims() -> No
                 "concurrent-key",
                 fingerprint,
                 now=now,
-                ttl=timedelta(minutes=1),
+                lease_ttl=timedelta(minutes=1),
             )
         finally:
             close_old_connections()

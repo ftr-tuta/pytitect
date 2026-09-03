@@ -37,6 +37,11 @@ from pytitect.aio.stores import (
     InMemoryAsyncInboxStore,
     InMemoryAsyncOutboxStore,
 )
+from pytitect.aio.supervision import (
+    OperationalSupervisor,
+    ShutdownSummary,
+    SupervisedTask,
+)
 from pytitect.aio.uow import (
     AsyncUnitOfWork,
     AsyncUnitOfWorkFactory,
@@ -66,6 +71,7 @@ __all__ = [
     "InMemoryAsyncOutboxStore",
     "InMemoryAsyncUnitOfWorkFactory",
     "InMemoryRejectedDeliveryStore",
+    "OperationalSupervisor",
     "PermanentProcessingError",
     "QuarantinePolicy",
     "QueryExecuted",
@@ -73,5 +79,7 @@ __all__ = [
     "RejectedDeliveryStore",
     "RelaySummary",
     "RetryableProcessingError",
+    "ShutdownSummary",
+    "SupervisedTask",
     "rejected_delivery",
 ]

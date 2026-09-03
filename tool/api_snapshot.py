@@ -28,6 +28,7 @@ MODULES = (
     "pytitect.receipts",
     "pytitect.security",
     "pytitect.sync",
+    "pytitect.trace",
 )
 
 

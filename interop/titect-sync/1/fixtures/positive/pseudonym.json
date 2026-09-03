@@ -1,0 +1,6 @@
+{
+  "algorithm": "keyed-blake2b-128",
+  "input": "synthetic-subject",
+  "synthetic_key_utf8": "synthetic-observation-key",
+  "hex": "f85114da2b3b89893d92da07ff4993cd"
+}

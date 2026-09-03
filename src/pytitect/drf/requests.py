@@ -6,6 +6,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from pytitect.trace import TraceContext, trace_context_from_headers
+
 
 @dataclass(frozen=True, slots=True)
 class RequestView:
@@ -27,3 +29,9 @@ def adapt_request(request: Any, *, include_headers: frozenset[str] = frozenset()
         headers=headers,
         body=bytes(request.body),
     )
+
+
+def adapt_trace_context(request: Any) -> TraceContext | None:
+    """Opt in to strict W3C Trace Context parsing for a DRF request."""
+
+    return trace_context_from_headers(request.headers)

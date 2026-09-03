@@ -146,6 +146,7 @@ jobs:
       - run: uv run python -m twine check dist/*
       - run: uv run python tool/package_smoke.py dist/*.whl
       - run: uv run python tool/api_snapshot.py
+      - run: uv run python tool/sync_bundle.py
       - run: uv run python tool/optional_imports.py
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -210,7 +211,13 @@ jobs:
         with:
           version: "0.11.7"
       - run: uv sync --all-extras --frozen
-      - run: uv run pytest --no-cov tests/test_contracts.py tests/test_security.py
+      - run: >-
+          uv run pytest --no-cov
+          tests/test_contracts.py
+          tests/test_security.py
+          tests/test_sync_bundle.py
+          tests/test_sync_contracts.py
+          tests/test_trace.py
 
   required:
     name: CI / Required

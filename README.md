@@ -69,9 +69,11 @@ implementation.
   lock and transaction as the protected mutation.
 - `pytitect.maintenance`: bounded UTC-cutoff retention and archival plans with explicit dry runs.
 - `pytitect.observability`: allowlisted structured events with hashing/redaction.
+- `pytitect.trace`: validated W3C Trace Context values and explicit request-context association,
+  without a tracing SDK or exporter.
 - `pytitect.canaries`: consumer-triggered, one-round health probes with no scheduler.
-- `pytitect.sync`: authenticated opaque cursors, bounded mutation batches, dependency graphs,
-  and generation guards without a sync engine or scheduler.
+- `pytitect.sync`: the neutral `titect-sync/1` contracts, authenticated opaque cursors, bounded
+  mutation batches, dependency graphs, and generation guards without a sync engine or scheduler.
 - `pytitect.django`, `pytitect.drf`, and `pytitect.security`: explicit optional adapters.
 
 See the focused guides in [`docs/`](docs/architecture.md), the synthetic examples in

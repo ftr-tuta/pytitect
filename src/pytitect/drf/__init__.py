@@ -11,7 +11,7 @@ from pytitect.drf.fields import (
     StrictUUIDField,
 )
 from pytitect.drf.problems import make_exception_handler
-from pytitect.drf.requests import RequestView, adapt_request
+from pytitect.drf.requests import RequestView, adapt_request, adapt_trace_context
 
 __all__ = [
     "BoundedJSONField",
@@ -24,5 +24,6 @@ __all__ = [
     "StrictListField",
     "StrictUUIDField",
     "adapt_request",
+    "adapt_trace_context",
     "make_exception_handler",
 ]

@@ -14,6 +14,12 @@ Semantic Versioning with the prerelease rules documented in `docs/versioning.md`
 - Finite process-local reference stores for checkpoints, receipts, and generations.
 - Explicit bounded retention plans for idempotency, replay, inbox, receipts, and delivered outbox
   rows, plus transactional terminal-failure archival.
+- Closed, serializable `titect-sync/1` contracts for bootstrap, sessions, datasets, snapshot/delta,
+  reset, generation mismatch, readiness, integrity, and mutation outcomes.
+- A route-free interoperability bundle with JSON Schema 2020-12, OpenAPI 3.1 components,
+  capability/header/limit registries, executable fixtures, and a deterministic SHA-256 manifest.
+- Validated W3C Trace Context parsing/rendering, explicit `RequestContext` and DRF adapters, and a
+  fixture-compatible pseudonymous observability vocabulary.
 
 ### Changed
 

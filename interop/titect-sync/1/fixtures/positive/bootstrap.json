@@ -1,0 +1,9 @@
+{
+  "protocol": "titect-sync/1",
+  "kind": "bootstrap_request",
+  "payload": {
+    "client_id": "synthetic-client-1",
+    "dataset_ids": ["synthetic-dataset-1"],
+    "capabilities": ["delta", "integrity-sha-256"]
+  }
+}

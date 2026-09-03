@@ -1,0 +1,12 @@
+{
+  "protocol": "titect-sync/1",
+  "capabilities": [
+    "delta",
+    "integrity-sha-256",
+    "mutations",
+    "receipts",
+    "snapshot",
+    "trace-context"
+  ],
+  "selection": "The consumer and provider explicitly negotiate a finite subset during bootstrap."
+}

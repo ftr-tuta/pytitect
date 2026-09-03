@@ -3,6 +3,28 @@
 `pytitect.sync` contains finite building blocks, not a synchronization engine. It never creates a
 scheduler, chooses a transport, opens a database, or binds a dataset automatically.
 
+## Versioned wire contracts
+
+`titect-sync/1` is the stable identifier of the neutral wire bundle. It is versioned independently
+from the Python distribution. Every document carries that exact identifier and one closed `kind`;
+`decode_sync_document()` rejects unknown fields at the envelope and every nested object. The
+serializable dataclasses cover bootstrap and sessions, dataset capabilities, snapshot and delta
+pages, upserts and tombstones, reset and generation mismatch decisions, readiness, page integrity,
+and mutation outcomes. They are boundary values, not routing or execution behavior.
+
+Wire timestamps are RFC 3339 UTC with exactly three fractional digits, for example
+`2026-01-01T00:00:00.123Z`. Opaque identifiers are trimmed, control-character-free, and limited to
+255 UTF-8 bytes by default. Dataset, capability, page, mutation, JSON-item, and document-byte limits
+are finite and explicit through `SyncLimits`; consumers may select stricter decoding limits.
+
+The normative bundle is in `interop/titect-sync/1`. It includes JSON Schema 2020-12, an OpenAPI 3.1
+document containing reusable components and an empty `paths` object, header/capability/limit
+registries, positive and negative fixtures, and a deterministic SHA-256 manifest. The bundle does
+not select URLs, transport, authentication, authorization, or protocol fallback. An application
+may bind legacy and new routes to the same service only through separate explicit boundary code.
+
+## Operational primitives
+
 `OpaqueCursorCodec` emits a three-part `protected.body.auth` v1 envelope. The protected header is
 RFC 8785 canonical JSON and binds the algorithm, key identifier, dataset, partition, and optional
 UTC expiration. HS256 authenticates the encoded header and body and requires at least 32 key bytes.

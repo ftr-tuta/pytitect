@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import threading
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from enum import StrEnum
@@ -147,6 +148,57 @@ class ReceiptStore(Protocol[ResultT]):
     ) -> bool: ...
 
 
+class InMemoryReceiptStore[ResultT]:
+    """Finite process-local reference receipt store with compare-and-set transitions."""
+
+    def __init__(self, *, capacity: int = 10_000) -> None:
+        if isinstance(capacity, bool) or not isinstance(capacity, int) or capacity <= 0:
+            raise ValueError("capacity must be a positive integer")
+        self._capacity = capacity
+        self._receipts: dict[OpaqueId[object], Receipt[ResultT]] = {}
+        self._lock = threading.RLock()
+
+    def get(self, receipt_id: OpaqueId[object]) -> Receipt[ResultT] | None:
+        with self._lock:
+            return self._receipts.get(receipt_id)
+
+    def add(self, receipt: Receipt[ResultT]) -> bool:
+        with self._lock:
+            if receipt.receipt_id in self._receipts:
+                return False
+            if len(self._receipts) >= self._capacity:
+                raise OverflowError("receipt capacity exceeded")
+            self._receipts[receipt.receipt_id] = receipt
+            return True
+
+    def transition(self, receipt: Receipt[ResultT], target: Receipt[ResultT]) -> bool:
+        proposed = receipt.transition(
+            target.state,
+            at=target.updated_at,
+            result=target.result,
+        )
+        if not isinstance(proposed, ReceiptTransitioned) or proposed.receipt != target:
+            return False
+        with self._lock:
+            if self._receipts.get(receipt.receipt_id) != receipt:
+                return False
+            self._receipts[receipt.receipt_id] = target
+            return True
+
+    def reconcile_uncertain(
+        self,
+        receipt: Receipt[ResultT],
+        target: Receipt[ResultT],
+    ) -> bool:
+        if not _valid_reconciliation(receipt, target):
+            return False
+        with self._lock:
+            if self._receipts.get(receipt.receipt_id) != receipt:
+                return False
+            self._receipts[receipt.receipt_id] = target
+            return True
+
+
 @dataclass(frozen=True, slots=True)
 class ConfirmedCompleted[ResultT]:
     receipt: Receipt[ResultT]
@@ -210,6 +262,64 @@ class ReceiptReconciler[ResultT]:
         if target is ReceiptState.REJECTED:
             return ConfirmedRejected(reconciled)
         return ConfirmedConflicted(reconciled)
+
+
+class ReceiptStoreHarness[ResultT]:
+    """Reusable behavioral contract for receipt stores."""
+
+    def __init__(self, factory: Callable[[], ReceiptStore[ResultT]]) -> None:
+        self._factory = factory
+
+    def exercise(self, *, value: ResultT, now: datetime) -> None:
+        store = self._factory()
+        accepted = MutationReceipt[ResultT](OpaqueId("accepted"), ReceiptState.ACCEPTED, now, now)
+        if not store.add(accepted) or store.add(accepted):
+            raise AssertionError("receipt insertion must be unique")
+        if store.get(accepted.receipt_id) != accepted:
+            raise AssertionError("an inserted receipt must be loadable")
+        transitioned = accepted.transition(ReceiptState.PROCESSING, at=now + timedelta(seconds=1))
+        if not isinstance(transitioned, ReceiptTransitioned):
+            raise AssertionError("the harness processing transition must be valid")
+        if not store.transition(accepted, transitioned.receipt):
+            raise AssertionError("a current receipt transition must succeed")
+        if store.transition(accepted, transitioned.receipt):
+            raise AssertionError("a stale receipt transition must fail")
+
+        uncertain = MutationReceipt[ResultT](
+            OpaqueId("uncertain"), ReceiptState.UNCERTAIN, now, now
+        )
+        if not store.add(uncertain):
+            raise AssertionError("an uncertain receipt must be insertable")
+        completed = replace(
+            uncertain,
+            state=ReceiptState.COMPLETED,
+            updated_at=now + timedelta(seconds=1),
+            result=value,
+        )
+        if not store.reconcile_uncertain(uncertain, completed):
+            raise AssertionError("a current uncertain receipt must reconcile")
+        if store.reconcile_uncertain(uncertain, completed):
+            raise AssertionError("a stale uncertain receipt must not reconcile")
+        if store.get(uncertain.receipt_id) != completed:
+            raise AssertionError("a reconciled receipt must be durable")
+
+
+def _valid_reconciliation[ResultT](receipt: Receipt[ResultT], target: Receipt[ResultT]) -> bool:
+    return bool(
+        receipt.state is ReceiptState.UNCERTAIN
+        and target.state
+        in {
+            ReceiptState.COMPLETED,
+            ReceiptState.REJECTED,
+            ReceiptState.CONFLICTED,
+        }
+        and target.receipt_id == receipt.receipt_id
+        and target.kind is receipt.kind
+        and target.created_at == receipt.created_at
+        and target.updated_at >= receipt.updated_at
+        and target.metadata == receipt.metadata
+        and (target.state is not ReceiptState.COMPLETED or target.result is not None)
+    )
 
 
 def _utc(value: datetime) -> None:

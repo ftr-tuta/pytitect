@@ -75,7 +75,8 @@ implementation.
 
 See the focused guides in [`docs/`](docs/architecture.md), the synthetic examples in
 [`examples/`](examples/django_legacy/README.md), and the public API policy in
-[`docs/versioning.md`](docs/versioning.md).
+[`docs/versioning.md`](docs/versioning.md). Prerelease adopters should also read the
+[`1.0 migration guide`](docs/migration-1.0.md).
 
 ## Security boundaries
 

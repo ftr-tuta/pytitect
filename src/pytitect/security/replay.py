@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Protocol
@@ -34,8 +35,10 @@ class ReplayStore(Protocol):
 
 
 class InMemoryReplayStore:
+    """Finite process-local reference store with no cross-process coordination."""
+
     def __init__(self, *, capacity: int = 10_000) -> None:
-        if capacity <= 0:
+        if isinstance(capacity, bool) or not isinstance(capacity, int) or capacity <= 0:
             raise ValueError("capacity must be positive")
         self._capacity = capacity
         self._entries: OrderedDict[tuple[str, str], datetime] = OrderedDict()
@@ -60,3 +63,26 @@ class InMemoryReplayStore:
             expires_at = now + ttl
             self._entries[identity] = expires_at
             return ReplayAccepted(expires_at)
+
+
+class ReplayStoreHarness:
+    """Reusable behavioral contract for replay stores."""
+
+    def __init__(self, factory: Callable[[], ReplayStore]) -> None:
+        self._factory = factory
+
+    def exercise(self, *, now: datetime) -> None:
+        store = self._factory()
+        ttl = timedelta(minutes=1)
+        accepted = store.reserve("scope-a", "proof", now=now, ttl=ttl)
+        if not isinstance(accepted, ReplayAccepted) or accepted.expires_at != now + ttl:
+            raise AssertionError("a new replay identity must be accepted for exactly its TTL")
+        duplicate = store.reserve("scope-a", "proof", now=now, ttl=ttl)
+        if not isinstance(duplicate, ReplayDetected):
+            raise AssertionError("an active replay identity must be detected")
+        separated = store.reserve("scope-b", "proof", now=now, ttl=ttl)
+        if not isinstance(separated, ReplayAccepted):
+            raise AssertionError("replay namespaces must be isolated")
+        expired = store.reserve("scope-a", "proof", now=now + ttl, ttl=ttl)
+        if not isinstance(expired, ReplayAccepted):
+            raise AssertionError("an expired replay identity must be reusable")

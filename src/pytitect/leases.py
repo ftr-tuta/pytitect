@@ -83,7 +83,12 @@ class LeaseStore(Protocol[ResourceT]):
 
 
 class InMemoryLeaseStore[ResourceT]:
-    def __init__(self) -> None:
+    """Finite process-local authority store with no cross-process coordination."""
+
+    def __init__(self, *, capacity: int = 10_000) -> None:
+        if isinstance(capacity, bool) or not isinstance(capacity, int) or capacity <= 0:
+            raise ValueError("capacity must be positive")
+        self._capacity = capacity
         self._leases: dict[ResourceT, Lease[ResourceT]] = {}
         self._tokens: dict[ResourceT, int] = {}
         self._lock = threading.RLock()
@@ -98,6 +103,8 @@ class InMemoryLeaseStore[ResourceT]:
             current = self._leases.get(resource)
             if current is not None and current.expires_at > now:
                 return LeaseBusy(current.owner, current.expires_at)
+            if resource not in self._tokens and len(self._tokens) >= self._capacity:
+                raise OverflowError("lease authority capacity exceeded")
             token = self._tokens.get(resource, 0) + 1
             lease = Lease(resource, owner, token, now + ttl)
             self._tokens[resource] = token
@@ -141,6 +148,38 @@ class InMemoryLeaseStore[ResourceT]:
 
         with self._lock:
             return mutation()
+
+
+class LeaseStoreHarness:
+    """Reusable behavioral contract for lease stores and monotonic fencing."""
+
+    def __init__(self, factory: Callable[[], LeaseStore[str]]) -> None:
+        self._factory = factory
+
+    def exercise(self, *, now: datetime) -> None:
+        store = self._factory()
+        ttl = timedelta(minutes=1)
+        first = store.acquire("resource", owner="one", now=now, ttl=ttl)
+        if not isinstance(first, LeaseAcquired) or first.lease.fencing_token != 1:
+            raise AssertionError("the first lease must receive fencing token one")
+        if not isinstance(store.acquire("resource", owner="two", now=now, ttl=ttl), LeaseBusy):
+            raise AssertionError("an active lease must exclude another owner")
+        renewed_at = now + timedelta(seconds=1)
+        renewed = store.renew(first.lease, now=renewed_at, ttl=ttl)
+        if not isinstance(renewed, LeaseRenewed):
+            raise AssertionError("the authoritative lease must renew")
+        if not isinstance(store.release(first.lease, now=renewed_at), StaleLease):
+            raise AssertionError("the pre-renewal lease snapshot must be stale")
+        if not isinstance(store.release(renewed.lease, now=renewed_at), LeaseReleased):
+            raise AssertionError("the authoritative lease must release")
+        if store.authority("resource") is not None:
+            raise AssertionError("a released lease must have no active authority")
+        takeover = store.acquire("resource", owner="two", now=renewed_at, ttl=ttl)
+        if (
+            not isinstance(takeover, LeaseAcquired)
+            or takeover.lease.fencing_token <= renewed.lease.fencing_token
+        ):
+            raise AssertionError("a reacquired lease must advance its fencing token")
 
 
 @dataclass(frozen=True, slots=True)

@@ -448,6 +448,117 @@ class InMemoryMutationBatchStore[ResultT]:
             self._entries.pop(identity)
 
 
+class MutationBatchStoreHarness[ResultT]:
+    """Reusable behavioral contract for retained mutation-batch stores."""
+
+    def __init__(self, factory: Callable[[], MutationBatchStore[ResultT]]) -> None:
+        self._factory = factory
+
+    def exercise(self, *, result: ResultT, now: datetime) -> None:
+        store = self._factory()
+        lease_ttl = timedelta(minutes=1)
+        retention_ttl = timedelta(hours=1)
+        fingerprint = RequestFingerprint.from_json({"items": [1]})
+        lease = store.begin(
+            "test",
+            "batch",
+            fingerprint,
+            total_items=1,
+            now=now,
+            lease_ttl=lease_ttl,
+        )
+        if not isinstance(lease, MutationBatchLease):
+            raise AssertionError("a new mutation batch must issue a lease")
+        if not isinstance(
+            store.begin(
+                "test",
+                "batch",
+                fingerprint,
+                total_items=1,
+                now=now,
+                lease_ttl=lease_ttl,
+            ),
+            BatchInProgress,
+        ):
+            raise AssertionError("an active mutation batch must be in progress")
+        if not isinstance(
+            store.begin(
+                "test",
+                "batch",
+                RequestFingerprint.from_json({"items": [2]}),
+                total_items=1,
+                now=now,
+                lease_ttl=lease_ttl,
+            ),
+            BatchConflict,
+        ):
+            raise AssertionError("a changed mutation batch fingerprint must conflict")
+        renewed_at = now + timedelta(seconds=1)
+        renewed = store.renew(lease, now=renewed_at, lease_ttl=lease_ttl)
+        if not isinstance(renewed, MutationBatchLeaseRenewed):
+            raise AssertionError("the authoritative mutation batch lease must renew")
+        if not isinstance(
+            store.renew(lease, now=renewed_at, lease_ttl=lease_ttl),
+            StaleMutationBatchLease,
+        ):
+            raise AssertionError("the pre-renewal batch lease snapshot must be stale")
+        progressed = store.advance(
+            renewed.lease,
+            BatchItemReceipt("item", result),
+            now=renewed_at,
+            lease_ttl=lease_ttl,
+        )
+        if not isinstance(progressed, MutationBatchProgressed):
+            raise AssertionError("the authoritative batch lease must advance")
+        completed = store.complete(
+            progressed.lease,
+            now=renewed_at,
+            retention_ttl=retention_ttl,
+        )
+        if not isinstance(completed, MutationBatchCompleted):
+            raise AssertionError("a fully advanced batch must complete")
+        replay = store.begin(
+            "test",
+            "batch",
+            fingerprint,
+            total_items=1,
+            now=now + lease_ttl,
+            lease_ttl=lease_ttl,
+        )
+        if not isinstance(replay, BatchReplay) or replay.receipts != (
+            BatchItemReceipt("item", result),
+        ):
+            raise AssertionError("a retained completed batch must replay")
+        replacement = store.begin(
+            "test",
+            "batch",
+            fingerprint,
+            total_items=1,
+            now=renewed_at + retention_ttl,
+            lease_ttl=lease_ttl,
+        )
+        if not isinstance(replacement, MutationBatchLease):
+            raise AssertionError("a batch identity must be reusable after terminal retention")
+        marked = store.mark_uncertain(
+            replacement,
+            "outcome unknown",
+            now=renewed_at + retention_ttl,
+            retention_ttl=retention_ttl,
+        )
+        if not isinstance(marked, MutationBatchMarkedUncertain):
+            raise AssertionError("the authoritative batch lease must become uncertain")
+        uncertain = store.begin(
+            "test",
+            "batch",
+            fingerprint,
+            total_items=1,
+            now=renewed_at + retention_ttl + lease_ttl,
+            lease_ttl=lease_ttl,
+        )
+        if not isinstance(uncertain, BatchUncertain):
+            raise AssertionError("an uncertain batch must remain retained")
+
+
 class BatchTransaction(Protocol):
     def atomic(self) -> AbstractContextManager[None]: ...
 

@@ -51,10 +51,18 @@ class Delivered:
 class Retryable:
     reason: str
 
+    def __post_init__(self) -> None:
+        if not self.reason:
+            raise ValueError("retry reason must not be empty")
+
 
 @dataclass(frozen=True, slots=True)
 class PermanentFailure:
     reason: str
+
+    def __post_init__(self) -> None:
+        if not self.reason:
+            raise ValueError("permanent failure reason must not be empty")
 
 
 type DeliveryResult = Delivered | Retryable | PermanentFailure
@@ -115,8 +123,10 @@ class _Stored[PayloadT]:
 
 
 class InMemoryOutboxStore[PayloadT]:
+    """Finite process-local reference store with no cross-process coordination."""
+
     def __init__(self, *, capacity: int = 10_000) -> None:
-        if capacity <= 0:
+        if isinstance(capacity, bool) or not isinstance(capacity, int) or capacity <= 0:
             raise ValueError("capacity must be positive")
         self._capacity = capacity
         self._items: dict[OpaqueId[object], _Stored[PayloadT]] = {}
@@ -139,7 +149,9 @@ class InMemoryOutboxStore[PayloadT]:
         self, *, now: datetime, limit: int, claim_ttl: timedelta
     ) -> Sequence[OutboxClaim[PayloadT]]:
         _utc(now)
-        if limit <= 0 or claim_ttl <= timedelta(0):
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
+            raise ValueError("claim limit must be a positive integer")
+        if claim_ttl <= timedelta(0):
             raise ValueError("claim limit and ttl must be positive")
         claimed: list[OutboxClaim[PayloadT]] = []
         with self._lock:
@@ -183,6 +195,8 @@ class InMemoryOutboxStore[PayloadT]:
             return True
 
     def failed(self, claim: OutboxClaim[PayloadT], *, reason: str) -> bool:
+        if not reason:
+            raise ValueError("outbox failure reason must not be empty")
         with self._lock:
             item = self._valid(claim)
             if item is None:
@@ -243,6 +257,55 @@ class OneRoundDispatcher[PayloadT]:
                 )
                 failed += int(self._store.failed(claim, reason=reason))
         return DispatchSummary(len(claims), delivered, retried, failed)
+
+
+class OutboxStoreHarness[PayloadT]:
+    """Reusable behavioral contract for outbox stores."""
+
+    def __init__(self, factory: Callable[[], OutboxStore[PayloadT]]) -> None:
+        self._factory = factory
+
+    def exercise(self, *, payload: PayloadT, now: datetime) -> None:
+        store = self._factory()
+        early = OutboxEnvelope(OpaqueId("early"), "events", payload, now, now)
+        late = OutboxEnvelope(OpaqueId("late"), "events", payload, now, now + timedelta(minutes=1))
+        if not isinstance(store.add(late), OutboxAdded):
+            raise AssertionError("a new outbox identity must be added")
+        if not isinstance(store.add(early), OutboxAdded):
+            raise AssertionError("a second outbox identity must be added")
+        if not isinstance(store.add(early), OutboxDuplicate):
+            raise AssertionError("an existing outbox identity must be rejected as duplicate")
+        claims = store.claim(now=now, limit=1, claim_ttl=timedelta(seconds=30))
+        if len(claims) != 1 or claims[0].envelope != early:
+            raise AssertionError("outbox claims must be finite, eligible, and ordered")
+        claim = claims[0]
+        try:
+            store.failed(claim, reason="")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("an empty terminal failure reason must be rejected")
+        retry_at = now + timedelta(seconds=10)
+        if not store.retry(claim, available_at=retry_at):
+            raise AssertionError("an authoritative claim must be retryable")
+        if store.retry(claim, available_at=retry_at):
+            raise AssertionError("a released claim must become stale")
+        if store.claim(now=now, limit=1, claim_ttl=timedelta(seconds=30)):
+            raise AssertionError("a delayed outbox item must not be claimed early")
+        retried = store.claim(now=retry_at, limit=1, claim_ttl=timedelta(seconds=30))
+        if len(retried) != 1 or retried[0].envelope.attempt != 1:
+            raise AssertionError("a retried outbox item must increment its attempt")
+        if not store.failed(retried[0], reason="terminal"):
+            raise AssertionError("an authoritative claim must accept terminal failure")
+        if not isinstance(store.add(early), OutboxDuplicate):
+            raise AssertionError("a terminal failure must keep its identity reserved")
+        delivered = store.claim(
+            now=now + timedelta(minutes=1), limit=1, claim_ttl=timedelta(seconds=30)
+        )
+        if len(delivered) != 1 or not store.delivered(delivered[0]):
+            raise AssertionError("an authoritative eligible claim must be deliverable")
+        if store.delivered(delivered[0]):
+            raise AssertionError("a delivered claim must become stale")
 
 
 def _utc(value: datetime) -> None:

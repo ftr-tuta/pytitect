@@ -7,7 +7,7 @@ import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
 from datetime import datetime, timedelta
-from typing import Any, TypeVar, cast
+from typing import Any, Protocol, TypeVar, cast
 
 from pytitect.checkpoints import Checkpoint
 from pytitect.core import JsonValue, OpaqueId, validate_json
@@ -36,6 +36,7 @@ from pytitect.inbox import (
     InboxDecision,
     InboxDuplicate,
     InboxInProgress,
+    InboxScope,
 )
 from pytitect.leases import (
     AcquireResult,
@@ -96,6 +97,279 @@ Encode = Callable[[T], JsonValue]
 Decode = Callable[[JsonValue], T]
 
 
+class _IdempotencyReserve[T](Protocol):
+    def __call__(
+        self,
+        scope: IdempotencyScope,
+        key: str,
+        fingerprint: RequestFingerprint,
+        *,
+        now: datetime,
+        lease_ttl: timedelta,
+        using: str,
+    ) -> IdempotencyDecision[T]: ...
+
+
+class _IdempotencyRenew(Protocol):
+    def __call__(
+        self,
+        token: ReservationToken,
+        *,
+        now: datetime,
+        lease_ttl: timedelta,
+        using: str,
+    ) -> RenewReservationResult: ...
+
+
+class _IdempotencyComplete[T](Protocol):
+    def __call__(
+        self,
+        token: ReservationToken,
+        value: T,
+        *,
+        now: datetime,
+        retention_ttl: timedelta,
+        using: str,
+    ) -> CompleteReservationResult: ...
+
+
+class _IdempotencyMarkUncertain(Protocol):
+    def __call__(
+        self,
+        token: ReservationToken,
+        reason: str,
+        *,
+        now: datetime,
+        retention_ttl: timedelta,
+        using: str,
+    ) -> MarkUncertainResult: ...
+
+
+class _IdempotencyAbandon(Protocol):
+    def __call__(
+        self, token: ReservationToken, *, now: datetime, using: str
+    ) -> AbandonReservationResult: ...
+
+
+class _MutationBatchBegin[T](Protocol):
+    def __call__(
+        self,
+        namespace: str,
+        batch_id: str,
+        fingerprint: RequestFingerprint,
+        *,
+        total_items: int,
+        now: datetime,
+        lease_ttl: timedelta,
+        using: str,
+    ) -> MutationBatchBeginResult[T]: ...
+
+
+class _MutationBatchRenew[T](Protocol):
+    def __call__(
+        self,
+        current: MutationBatchLease[T],
+        *,
+        now: datetime,
+        lease_ttl: timedelta,
+        using: str,
+    ) -> MutationBatchRenewResult[T]: ...
+
+
+class _MutationBatchAdvance[T](Protocol):
+    def __call__(
+        self,
+        current: MutationBatchLease[T],
+        receipt: BatchItemReceipt[T],
+        *,
+        now: datetime,
+        lease_ttl: timedelta,
+        using: str,
+    ) -> MutationBatchAdvanceResult[T]: ...
+
+
+class _MutationBatchComplete[T](Protocol):
+    def __call__(
+        self,
+        current: MutationBatchLease[T],
+        *,
+        now: datetime,
+        retention_ttl: timedelta,
+        using: str,
+    ) -> MutationBatchCompleteResult: ...
+
+
+class _MutationBatchMarkUncertain[T](Protocol):
+    def __call__(
+        self,
+        current: MutationBatchLease[T],
+        reason: str,
+        *,
+        now: datetime,
+        retention_ttl: timedelta,
+        using: str,
+    ) -> MutationBatchUncertainResult: ...
+
+
+class _ReplayReserve(Protocol):
+    def __call__(
+        self,
+        namespace: str,
+        digest: str,
+        *,
+        now: datetime,
+        ttl: timedelta,
+        using: str,
+    ) -> ReplayDecision: ...
+
+
+class _InboxBegin(Protocol):
+    def __call__(
+        self,
+        scope: InboxScope,
+        message_id: OpaqueId[object],
+        *,
+        token: str,
+        now: datetime,
+        ttl: timedelta,
+        using: str,
+    ) -> InboxDecision: ...
+
+
+class _InboxComplete(Protocol):
+    def __call__(
+        self,
+        scope: InboxScope,
+        message_id: OpaqueId[object],
+        *,
+        token: str,
+        now: datetime,
+        using: str,
+    ) -> bool: ...
+
+
+class _InboxAbandon(Protocol):
+    def __call__(
+        self,
+        scope: InboxScope,
+        message_id: OpaqueId[object],
+        *,
+        token: str,
+        using: str,
+    ) -> bool: ...
+
+
+class _OutboxAdd[PayloadT](Protocol):
+    def __call__(self, envelope: OutboxEnvelope[PayloadT], *, using: str) -> OutboxAddResult: ...
+
+
+class _OutboxClaim[PayloadT](Protocol):
+    def __call__(
+        self,
+        *,
+        now: datetime,
+        limit: int,
+        claim_ttl: timedelta,
+        using: str,
+    ) -> Sequence[OutboxClaim[PayloadT]]: ...
+
+
+class _OutboxDelivered[PayloadT](Protocol):
+    def __call__(self, claim: OutboxClaim[PayloadT], *, using: str) -> bool: ...
+
+
+class _OutboxRetry[PayloadT](Protocol):
+    def __call__(
+        self,
+        claim: OutboxClaim[PayloadT],
+        *,
+        available_at: datetime,
+        using: str,
+    ) -> bool: ...
+
+
+class _OutboxFailed[PayloadT](Protocol):
+    def __call__(self, claim: OutboxClaim[PayloadT], *, reason: str, using: str) -> bool: ...
+
+
+class _CheckpointLoad(Protocol):
+    def __call__(self, stream: str, *, using: str) -> Checkpoint | None: ...
+
+
+class _CheckpointAdvance(Protocol):
+    def __call__(
+        self,
+        stream: str,
+        *,
+        expected: Checkpoint | None,
+        checkpoint: Checkpoint,
+        using: str,
+    ) -> bool: ...
+
+
+class _ReceiptGet[T](Protocol):
+    def __call__(self, receipt_id: OpaqueId[object], *, using: str) -> Receipt[T] | None: ...
+
+
+class _ReceiptAdd[T](Protocol):
+    def __call__(self, receipt: Receipt[T], *, using: str) -> bool: ...
+
+
+class _ReceiptTransition[T](Protocol):
+    def __call__(self, receipt: Receipt[T], target: Receipt[T], *, using: str) -> bool: ...
+
+
+class _LeaseAcquire[ResourceT](Protocol):
+    def __call__(
+        self,
+        resource: ResourceT,
+        *,
+        owner: str,
+        now: datetime,
+        ttl: timedelta,
+        using: str,
+    ) -> AcquireResult[ResourceT]: ...
+
+
+class _LeaseRenew[ResourceT](Protocol):
+    def __call__(
+        self,
+        lease: Lease[ResourceT],
+        *,
+        now: datetime,
+        ttl: timedelta,
+        using: str,
+    ) -> RenewResult[ResourceT]: ...
+
+
+class _LeaseRelease[ResourceT](Protocol):
+    def __call__(self, lease: Lease[ResourceT], *, now: datetime, using: str) -> ReleaseResult: ...
+
+
+class _LeaseAuthority[ResourceT](Protocol):
+    def __call__(self, resource: ResourceT, *, using: str) -> int | None: ...
+
+
+class _LeaseLockAuthority[ResourceT](Protocol):
+    def __call__(self, resource: ResourceT, *, using: str) -> LeaseAuthority | None: ...
+
+
+class _GenerationLoad(Protocol):
+    def __call__(self, dataset: str, partition: str, *, using: str) -> int | None: ...
+
+
+class _GenerationCompareAndSet(Protocol):
+    def __call__(
+        self,
+        dataset: str,
+        partition: str,
+        *,
+        expected: int | None,
+        generation: int,
+        using: str,
+    ) -> bool: ...
+
+
 def _identity_encode(value: JsonValue) -> JsonValue:
     validate_json(value)
     return value
@@ -111,11 +385,11 @@ class DjangoIdempotencyStore[T]:
         self,
         *,
         using: str,
-        reserve: Callable[..., IdempotencyDecision[T]],
-        renew: Callable[..., RenewReservationResult],
-        complete: Callable[..., CompleteReservationResult],
-        mark_uncertain: Callable[..., MarkUncertainResult],
-        abandon: Callable[..., AbandonReservationResult],
+        reserve: _IdempotencyReserve[T],
+        renew: _IdempotencyRenew,
+        complete: _IdempotencyComplete[T],
+        mark_uncertain: _IdempotencyMarkUncertain,
+        abandon: _IdempotencyAbandon,
     ) -> None:
         self.using = _alias(using)
         self._reserve = reserve
@@ -129,11 +403,11 @@ class DjangoIdempotencyStore[T]:
         cls,
         *,
         using: str,
-        reserve: Callable[..., IdempotencyDecision[T]],
-        renew: Callable[..., RenewReservationResult],
-        complete: Callable[..., CompleteReservationResult],
-        mark_uncertain: Callable[..., MarkUncertainResult],
-        abandon: Callable[..., AbandonReservationResult],
+        reserve: _IdempotencyReserve[T],
+        renew: _IdempotencyRenew,
+        complete: _IdempotencyComplete[T],
+        mark_uncertain: _IdempotencyMarkUncertain,
+        abandon: _IdempotencyAbandon,
     ) -> DjangoIdempotencyStore[T]:
         return cls(
             using=using,
@@ -329,6 +603,10 @@ class DjangoIdempotencyStore[T]:
         now: datetime,
         lease_ttl: timedelta,
     ) -> IdempotencyDecision[T]:
+        _utc(now)
+        _required(key, "idempotency key")
+        if lease_ttl <= timedelta(0):
+            raise ValueError("execution lease ttl must be positive")
         return self._reserve(
             scope,
             key,
@@ -345,6 +623,9 @@ class DjangoIdempotencyStore[T]:
         now: datetime,
         lease_ttl: timedelta,
     ) -> RenewReservationResult:
+        _utc(now)
+        if lease_ttl <= timedelta(0):
+            raise ValueError("execution lease ttl must be positive")
         return self._renew(token, now=now, lease_ttl=lease_ttl, using=self.using)
 
     def complete(
@@ -355,6 +636,9 @@ class DjangoIdempotencyStore[T]:
         now: datetime,
         retention_ttl: timedelta,
     ) -> CompleteReservationResult:
+        _utc(now)
+        if retention_ttl <= timedelta(0):
+            raise ValueError("result retention ttl must be positive")
         return self._complete(
             token,
             value,
@@ -371,6 +655,10 @@ class DjangoIdempotencyStore[T]:
         now: datetime,
         retention_ttl: timedelta,
     ) -> MarkUncertainResult:
+        _utc(now)
+        _required(reason, "uncertainty reason")
+        if retention_ttl <= timedelta(0):
+            raise ValueError("uncertainty retention ttl must be positive")
         return self._uncertain(
             token,
             reason,
@@ -385,6 +673,7 @@ class DjangoIdempotencyStore[T]:
         *,
         now: datetime,
     ) -> AbandonReservationResult:
+        _utc(now)
         return self._abandon(token, now=now, using=self.using)
 
 
@@ -395,11 +684,11 @@ class DjangoMutationBatchStore[T]:
         self,
         *,
         using: str,
-        begin: Callable[..., MutationBatchBeginResult[T]],
-        renew: Callable[..., MutationBatchRenewResult[T]],
-        advance: Callable[..., MutationBatchAdvanceResult[T]],
-        complete: Callable[..., MutationBatchCompleteResult],
-        mark_uncertain: Callable[..., MutationBatchUncertainResult],
+        begin: _MutationBatchBegin[T],
+        renew: _MutationBatchRenew[T],
+        advance: _MutationBatchAdvance[T],
+        complete: _MutationBatchComplete[T],
+        mark_uncertain: _MutationBatchMarkUncertain[T],
     ) -> None:
         self.using = _alias(using)
         self._begin = begin
@@ -413,11 +702,11 @@ class DjangoMutationBatchStore[T]:
         cls,
         *,
         using: str,
-        begin: Callable[..., MutationBatchBeginResult[T]],
-        renew: Callable[..., MutationBatchRenewResult[T]],
-        advance: Callable[..., MutationBatchAdvanceResult[T]],
-        complete: Callable[..., MutationBatchCompleteResult],
-        mark_uncertain: Callable[..., MutationBatchUncertainResult],
+        begin: _MutationBatchBegin[T],
+        renew: _MutationBatchRenew[T],
+        advance: _MutationBatchAdvance[T],
+        complete: _MutationBatchComplete[T],
+        mark_uncertain: _MutationBatchMarkUncertain[T],
     ) -> DjangoMutationBatchStore[T]:
         return cls(
             using=using,
@@ -722,6 +1011,13 @@ class DjangoMutationBatchStore[T]:
         now: datetime,
         lease_ttl: timedelta,
     ) -> MutationBatchBeginResult[T]:
+        _utc(now)
+        _required(namespace, "namespace")
+        _required(batch_id, "batch id")
+        if isinstance(total_items, bool) or not isinstance(total_items, int) or total_items < 0:
+            raise ValueError("total_items must be a non-negative integer")
+        if lease_ttl <= timedelta(0):
+            raise ValueError("execution lease ttl must be positive")
         return self._begin(
             namespace,
             batch_id,
@@ -739,6 +1035,9 @@ class DjangoMutationBatchStore[T]:
         now: datetime,
         lease_ttl: timedelta,
     ) -> MutationBatchRenewResult[T]:
+        _utc(now)
+        if lease_ttl <= timedelta(0):
+            raise ValueError("execution lease ttl must be positive")
         return self._renew(lease, now=now, lease_ttl=lease_ttl, using=self.using)
 
     def advance(
@@ -749,6 +1048,9 @@ class DjangoMutationBatchStore[T]:
         now: datetime,
         lease_ttl: timedelta,
     ) -> MutationBatchAdvanceResult[T]:
+        _utc(now)
+        if lease_ttl <= timedelta(0):
+            raise ValueError("execution lease ttl must be positive")
         return self._advance(
             lease,
             receipt,
@@ -764,6 +1066,9 @@ class DjangoMutationBatchStore[T]:
         now: datetime,
         retention_ttl: timedelta,
     ) -> MutationBatchCompleteResult:
+        _utc(now)
+        if retention_ttl <= timedelta(0):
+            raise ValueError("result retention ttl must be positive")
         return self._complete(lease, now=now, retention_ttl=retention_ttl, using=self.using)
 
     def mark_uncertain(
@@ -774,6 +1079,10 @@ class DjangoMutationBatchStore[T]:
         now: datetime,
         retention_ttl: timedelta,
     ) -> MutationBatchUncertainResult:
+        _utc(now)
+        _required(reason, "uncertainty reason")
+        if retention_ttl <= timedelta(0):
+            raise ValueError("uncertainty retention ttl must be positive")
         return self._uncertain(
             lease,
             reason,
@@ -784,14 +1093,12 @@ class DjangoMutationBatchStore[T]:
 
 
 class DjangoReplayStore:
-    def __init__(self, *, using: str, reserve_digest: Callable[..., ReplayDecision]) -> None:
+    def __init__(self, *, using: str, reserve_digest: _ReplayReserve) -> None:
         self.using = _alias(using)
         self._reserve_digest = reserve_digest
 
     @classmethod
-    def from_callbacks(
-        cls, *, using: str, reserve_digest: Callable[..., ReplayDecision]
-    ) -> DjangoReplayStore:
+    def from_callbacks(cls, *, using: str, reserve_digest: _ReplayReserve) -> DjangoReplayStore:
         return cls(using=using, reserve_digest=reserve_digest)
 
     @classmethod
@@ -828,6 +1135,7 @@ class DjangoReplayStore:
     def reserve(
         self, namespace: str, value: str, *, now: datetime, ttl: timedelta
     ) -> ReplayDecision:
+        _utc(now)
         if not namespace or not value or ttl <= timedelta(0):
             raise ValueError("namespace, value, and positive ttl are required")
         digest = hashlib.sha256(value.encode()).hexdigest()
@@ -839,9 +1147,9 @@ class DjangoInboxStore:
         self,
         *,
         using: str,
-        begin: Callable[..., InboxDecision],
-        complete: Callable[..., bool],
-        abandon: Callable[..., bool],
+        begin: _InboxBegin,
+        complete: _InboxComplete,
+        abandon: _InboxAbandon,
     ) -> None:
         self.using = _alias(using)
         self._begin = begin
@@ -853,17 +1161,18 @@ class DjangoInboxStore:
         cls,
         *,
         using: str,
-        begin: Callable[..., InboxDecision],
-        complete: Callable[..., bool],
-        abandon: Callable[..., bool],
+        begin: _InboxBegin,
+        complete: _InboxComplete,
+        abandon: _InboxAbandon,
     ) -> DjangoInboxStore:
         return cls(using=using, begin=begin, complete=complete, abandon=abandon)
 
     @classmethod
     def from_model(cls, model: Any, *, using: str) -> DjangoInboxStore:
-        _unique(model, {"message_id"})
+        _unique(model, {"namespace", "source", "consumer", "message_id"})
 
         def begin(
+            scope: InboxScope,
             message_id: OpaqueId[object],
             *,
             token: str,
@@ -875,7 +1184,12 @@ class DjangoInboxStore:
             _utc(now)
             from django.db import transaction
 
-            lookup = {"message_id": str(message_id)}
+            lookup = {
+                "namespace": scope.namespace,
+                "source": scope.source,
+                "consumer": scope.consumer,
+                "message_id": str(message_id),
+            }
             with transaction.atomic(using=using):
                 row = _locked_first(model, using, lookup)
                 if row is None:
@@ -905,13 +1219,21 @@ class DjangoInboxStore:
                 return InboxAccepted(token)
 
         def complete(
-            message_id: OpaqueId[object], *, token: str, now: datetime, using: str
+            scope: InboxScope,
+            message_id: OpaqueId[object],
+            *,
+            token: str,
+            now: datetime,
+            using: str,
         ) -> bool:
             _postgresql(using)
             _utc(now)
             return bool(
                 _manager(model, using)
                 .filter(
+                    namespace=scope.namespace,
+                    source=scope.source,
+                    consumer=scope.consumer,
                     message_id=str(message_id),
                     reservation_token=token,
                     completed_at__isnull=True,
@@ -920,11 +1242,20 @@ class DjangoInboxStore:
                 .update(completed_at=now)
             )
 
-        def abandon(message_id: OpaqueId[object], *, token: str, using: str) -> bool:
+        def abandon(
+            scope: InboxScope,
+            message_id: OpaqueId[object],
+            *,
+            token: str,
+            using: str,
+        ) -> bool:
             _postgresql(using)
             deleted, _ = (
                 _manager(model, using)
                 .filter(
+                    namespace=scope.namespace,
+                    source=scope.source,
+                    consumer=scope.consumer,
                     message_id=str(message_id),
                     reservation_token=token,
                     completed_at__isnull=True,
@@ -937,21 +1268,31 @@ class DjangoInboxStore:
 
     def begin(
         self,
+        scope: InboxScope,
         message_id: OpaqueId[object],
         *,
         token: str,
         now: datetime,
         ttl: timedelta,
     ) -> InboxDecision:
+        _utc(now)
         if not token or ttl <= timedelta(0):
             raise ValueError("token and a positive ttl are required")
-        return self._begin(message_id, token=token, now=now, ttl=ttl, using=self.using)
+        return self._begin(scope, message_id, token=token, now=now, ttl=ttl, using=self.using)
 
-    def complete(self, message_id: OpaqueId[object], *, token: str, now: datetime) -> bool:
-        return bool(self._complete(message_id, token=token, now=now, using=self.using))
+    def complete(
+        self,
+        scope: InboxScope,
+        message_id: OpaqueId[object],
+        *,
+        token: str,
+        now: datetime,
+    ) -> bool:
+        _utc(now)
+        return bool(self._complete(scope, message_id, token=token, now=now, using=self.using))
 
-    def abandon(self, message_id: OpaqueId[object], *, token: str) -> bool:
-        return bool(self._abandon(message_id, token=token, using=self.using))
+    def abandon(self, scope: InboxScope, message_id: OpaqueId[object], *, token: str) -> bool:
+        return bool(self._abandon(scope, message_id, token=token, using=self.using))
 
 
 class DjangoOutboxStore[PayloadT]:
@@ -959,11 +1300,11 @@ class DjangoOutboxStore[PayloadT]:
         self,
         *,
         using: str,
-        add: Callable[..., OutboxAddResult],
-        claim: Callable[..., Sequence[OutboxClaim[PayloadT]]],
-        delivered: Callable[..., bool],
-        retry: Callable[..., bool],
-        failed: Callable[..., bool],
+        add: _OutboxAdd[PayloadT],
+        claim: _OutboxClaim[PayloadT],
+        delivered: _OutboxDelivered[PayloadT],
+        retry: _OutboxRetry[PayloadT],
+        failed: _OutboxFailed[PayloadT],
     ) -> None:
         self.using = _alias(using)
         self._add = add
@@ -977,11 +1318,11 @@ class DjangoOutboxStore[PayloadT]:
         cls,
         *,
         using: str,
-        add: Callable[..., OutboxAddResult],
-        claim: Callable[..., Sequence[OutboxClaim[PayloadT]]],
-        delivered: Callable[..., bool],
-        retry: Callable[..., bool],
-        failed: Callable[..., bool],
+        add: _OutboxAdd[PayloadT],
+        claim: _OutboxClaim[PayloadT],
+        delivered: _OutboxDelivered[PayloadT],
+        retry: _OutboxRetry[PayloadT],
+        failed: _OutboxFailed[PayloadT],
     ) -> DjangoOutboxStore[PayloadT]:
         return cls(
             using=using,
@@ -1102,7 +1443,10 @@ class DjangoOutboxStore[PayloadT]:
     def claim(
         self, *, now: datetime, limit: int, claim_ttl: timedelta
     ) -> Sequence[OutboxClaim[PayloadT]]:
-        if limit <= 0 or claim_ttl <= timedelta(0):
+        _utc(now)
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
+            raise ValueError("claim limit must be a positive integer")
+        if claim_ttl <= timedelta(0):
             raise ValueError("claim limit and ttl must be positive")
         return self._claim(now=now, limit=limit, claim_ttl=claim_ttl, using=self.using)
 
@@ -1110,9 +1454,12 @@ class DjangoOutboxStore[PayloadT]:
         return bool(self._delivered(claim, using=self.using))
 
     def retry(self, claim: OutboxClaim[PayloadT], *, available_at: datetime) -> bool:
+        _utc(available_at)
         return bool(self._retry(claim, available_at=available_at, using=self.using))
 
     def failed(self, claim: OutboxClaim[PayloadT], *, reason: str) -> bool:
+        if not reason:
+            raise ValueError("outbox failure reason must not be empty")
         return bool(self._failed(claim, reason=reason, using=self.using))
 
 
@@ -1121,9 +1468,9 @@ class DjangoCheckpointStore:
         self,
         *,
         using: str,
-        load: Callable[..., Checkpoint | None],
-        load_for_update: Callable[..., Checkpoint | None],
-        advance: Callable[..., bool],
+        load: _CheckpointLoad,
+        load_for_update: _CheckpointLoad,
+        advance: _CheckpointAdvance,
     ) -> None:
         self.using = _alias(using)
         self._load = load
@@ -1135,9 +1482,9 @@ class DjangoCheckpointStore:
         cls,
         *,
         using: str,
-        load: Callable[..., Checkpoint | None],
-        load_for_update: Callable[..., Checkpoint | None],
-        advance: Callable[..., bool],
+        load: _CheckpointLoad,
+        load_for_update: _CheckpointLoad,
+        advance: _CheckpointAdvance,
     ) -> DjangoCheckpointStore:
         return cls(
             using=using,
@@ -1209,10 +1556,10 @@ class DjangoReceiptStore[T]:
         self,
         *,
         using: str,
-        get: Callable[..., Receipt[T] | None],
-        add: Callable[..., bool],
-        transition: Callable[..., bool],
-        reconcile_uncertain: Callable[..., bool],
+        get: _ReceiptGet[T],
+        add: _ReceiptAdd[T],
+        transition: _ReceiptTransition[T],
+        reconcile_uncertain: _ReceiptTransition[T],
     ) -> None:
         self.using = _alias(using)
         self._get = get
@@ -1225,10 +1572,10 @@ class DjangoReceiptStore[T]:
         cls,
         *,
         using: str,
-        get: Callable[..., Receipt[T] | None],
-        add: Callable[..., bool],
-        transition: Callable[..., bool],
-        reconcile_uncertain: Callable[..., bool],
+        get: _ReceiptGet[T],
+        add: _ReceiptAdd[T],
+        transition: _ReceiptTransition[T],
+        reconcile_uncertain: _ReceiptTransition[T],
     ) -> DjangoReceiptStore[T]:
         return cls(
             using=using,
@@ -1362,11 +1709,11 @@ class DjangoLeaseStore[ResourceT]:
         self,
         *,
         using: str,
-        acquire: Callable[..., AcquireResult[ResourceT]],
-        renew: Callable[..., RenewResult[ResourceT]],
-        release: Callable[..., ReleaseResult],
-        authority: Callable[..., int | None],
-        lock_authority: Callable[..., LeaseAuthority | None],
+        acquire: _LeaseAcquire[ResourceT],
+        renew: _LeaseRenew[ResourceT],
+        release: _LeaseRelease[ResourceT],
+        authority: _LeaseAuthority[ResourceT],
+        lock_authority: _LeaseLockAuthority[ResourceT],
     ) -> None:
         self.using = _alias(using)
         self._acquire = acquire
@@ -1380,11 +1727,11 @@ class DjangoLeaseStore[ResourceT]:
         cls,
         *,
         using: str,
-        acquire: Callable[..., AcquireResult[ResourceT]],
-        renew: Callable[..., RenewResult[ResourceT]],
-        release: Callable[..., ReleaseResult],
-        authority: Callable[..., int | None],
-        lock_authority: Callable[..., LeaseAuthority | None],
+        acquire: _LeaseAcquire[ResourceT],
+        renew: _LeaseRenew[ResourceT],
+        release: _LeaseRelease[ResourceT],
+        authority: _LeaseAuthority[ResourceT],
+        lock_authority: _LeaseLockAuthority[ResourceT],
     ) -> DjangoLeaseStore[ResourceT]:
         return cls(
             using=using,
@@ -1402,7 +1749,6 @@ class DjangoLeaseStore[ResourceT]:
         *,
         using: str,
         encode_resource: Callable[[ResourceT], str] = str,
-        decode_resource: Callable[[str], ResourceT] | None = None,
     ) -> DjangoLeaseStore[ResourceT]:
         _unique(model, {"resource_key"})
 
@@ -1491,7 +1837,6 @@ class DjangoLeaseStore[ResourceT]:
                 return None
             return LeaseAuthority(row.owner, row.fencing_token, row.expires_at)
 
-        del decode_resource  # Resource values are supplied by callers; rows store only keys.
         return cls.from_callbacks(
             using=using,
             acquire=acquire,
@@ -1504,6 +1849,7 @@ class DjangoLeaseStore[ResourceT]:
     def acquire(
         self, resource: ResourceT, *, owner: str, now: datetime, ttl: timedelta
     ) -> AcquireResult[ResourceT]:
+        _utc(now)
         if not owner or ttl <= timedelta(0):
             raise ValueError("owner and positive ttl are required")
         return self._acquire(resource, owner=owner, now=now, ttl=ttl, using=self.using)
@@ -1511,11 +1857,13 @@ class DjangoLeaseStore[ResourceT]:
     def renew(
         self, lease: Lease[ResourceT], *, now: datetime, ttl: timedelta
     ) -> RenewResult[ResourceT]:
+        _utc(now)
         if ttl <= timedelta(0):
             raise ValueError("ttl must be positive")
         return self._renew(lease, now=now, ttl=ttl, using=self.using)
 
     def release(self, lease: Lease[ResourceT], *, now: datetime) -> ReleaseResult:
+        _utc(now)
         return self._release(lease, now=now, using=self.using)
 
     def authority(self, resource: ResourceT) -> int | None:
@@ -1530,8 +1878,8 @@ class DjangoGenerationStore:
         self,
         *,
         using: str,
-        load_for_update: Callable[..., int | None],
-        compare_and_set: Callable[..., bool],
+        load_for_update: _GenerationLoad,
+        compare_and_set: _GenerationCompareAndSet,
     ) -> None:
         self.using = _alias(using)
         self._load_for_update = load_for_update
@@ -1542,8 +1890,8 @@ class DjangoGenerationStore:
         cls,
         *,
         using: str,
-        load_for_update: Callable[..., int | None],
-        compare_and_set: Callable[..., bool],
+        load_for_update: _GenerationLoad,
+        compare_and_set: _GenerationCompareAndSet,
     ) -> DjangoGenerationStore:
         return cls(
             using=using,
@@ -1607,8 +1955,14 @@ class DjangoGenerationStore:
         expected: int | None,
         generation: int,
     ) -> bool:
-        if generation < 0:
-            raise ValueError("generation must not be negative")
+        _required(dataset, "dataset")
+        _required(partition, "partition")
+        if isinstance(generation, bool) or not isinstance(generation, int) or generation < 0:
+            raise ValueError("generation must be a non-negative integer")
+        if expected is not None and (
+            isinstance(expected, bool) or not isinstance(expected, int) or expected < 0
+        ):
+            raise ValueError("expected generation must be a non-negative integer or None")
         return bool(
             self._compare_and_set(
                 dataset,

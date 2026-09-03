@@ -9,6 +9,9 @@ Semantic Versioning with the prerelease rules documented in `docs/versioning.md`
 
 - Dedicated finite and Django/PostgreSQL mutation-batch stores with explicit processing,
   partially committed, completed, and uncertain states.
+- Public conformance harnesses for replay, inbox, outbox, checkpoints, receipts, idempotency,
+  leases, generations, transaction boundaries, and mutation batches.
+- Finite process-local reference stores for checkpoints, receipts, and generations.
 
 ### Changed
 
@@ -17,6 +20,12 @@ Semantic Versioning with the prerelease rules documented in `docs/versioning.md`
 - `BatchItemsCommittedEnvelopeUnconfirmed` is recoverable by retry while item receipts remain
   retained. The coordinator now requires a `MutationBatchStore` and uses an explicit clock instead
   of accepting an execution timestamp.
+- Inbox identity is now `(InboxScope(namespace, source, consumer), message_id)`. Django concrete
+  models must use the matching four-column unique constraint; there is no unscoped fallback.
+- Django callback adapters use complete structural protocols, validate inputs at their public
+  boundary, and no longer accept the unused lease `decode_resource` callback.
+- Empty terminal outbox failure reasons are rejected consistently by reference, callback, and
+  PostgreSQL stores.
 
 ## 1.0.0rc1 - candidate not materialized
 

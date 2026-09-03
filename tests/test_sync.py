@@ -106,6 +106,20 @@ class GenerationStore:
         del dataset, partition
         return self.value
 
+    def compare_and_set(
+        self,
+        dataset: str,
+        partition: str,
+        *,
+        expected: int | None,
+        generation: int,
+    ) -> bool:
+        del dataset, partition
+        if self.value != expected:
+            return False
+        self.value = generation
+        return True
+
 
 POLICY = IdempotencyPolicy(
     execution_lease_ttl=timedelta(minutes=1),

@@ -22,6 +22,7 @@ from pytitect.sync.batches import (
     MutationBatchProgressed,
     MutationBatchState,
     MutationBatchStore,
+    MutationBatchStoreHarness,
     StaleMutationBatchLease,
 )
 from pytitect.sync.cursors import (
@@ -36,6 +37,8 @@ from pytitect.sync.generations import (
     GenerationCommitted,
     GenerationGuard,
     GenerationStore,
+    GenerationStoreHarness,
+    InMemoryGenerationStore,
     StaleGeneration,
 )
 from pytitect.sync.graph import (
@@ -74,6 +77,8 @@ __all__ = [
     "GenerationCommitted",
     "GenerationGuard",
     "GenerationStore",
+    "GenerationStoreHarness",
+    "InMemoryGenerationStore",
     "InMemoryMutationBatchStore",
     "MutationBatchCompleted",
     "MutationBatchCoordinator",
@@ -83,6 +88,7 @@ __all__ = [
     "MutationBatchProgressed",
     "MutationBatchState",
     "MutationBatchStore",
+    "MutationBatchStoreHarness",
     "OpaqueCursorCodec",
     "StaleGeneration",
     "StaleMutationBatchLease",

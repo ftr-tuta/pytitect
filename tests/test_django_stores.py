@@ -36,7 +36,7 @@ from pytitect.idempotency import (
     ReservationToken,
     StaleReservation,
 )
-from pytitect.inbox import InboxAccepted
+from pytitect.inbox import InboxAccepted, InboxScope
 from pytitect.leases import (
     FencedCommitted,
     Lease,
@@ -207,20 +207,27 @@ def test_callback_stores_always_receive_the_explicit_alias() -> None:
 
     inbox = DjangoInboxStore.from_callbacks(
         using="events",
-        begin=lambda message_id, *, token, now, ttl, using: (
+        begin=lambda scope, message_id, *, token, now, ttl, using: (
             record(using),
             InboxAccepted(token),
         )[1],
         complete=lambda *args, using, **kwargs: (record(using), True)[1],
         abandon=lambda *args, using, **kwargs: (record(using), True)[1],
     )
+    inbox_scope = InboxScope("events", "upstream", "projection")
     message_id = OpaqueId("message")
     assert isinstance(
-        inbox.begin(message_id, token="worker", now=now, ttl=timedelta(seconds=1)),
+        inbox.begin(
+            inbox_scope,
+            message_id,
+            token="worker",
+            now=now,
+            ttl=timedelta(seconds=1),
+        ),
         InboxAccepted,
     )
-    assert inbox.complete(message_id, token="worker", now=now)
-    assert inbox.abandon(message_id, token="worker")
+    assert inbox.complete(inbox_scope, message_id, token="worker", now=now)
+    assert inbox.abandon(inbox_scope, message_id, token="worker")
 
     envelope = OutboxEnvelope(message_id, "topic", {"value": 1}, now, now)
     claim = OutboxClaim("claim", envelope, now + timedelta(seconds=1))

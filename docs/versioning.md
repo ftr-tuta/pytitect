@@ -7,7 +7,7 @@ versions use PEP 440 identifiers. The version has one source in `src/pytitect/__
 Public symbols are recorded in `tool/public-api.txt`. Removing or changing one requires a deliberate
 version decision and changelog entry.
 
-The source candidate is `1.0.0rc1`, whose derivable repository tag is `v1.0.0-rc.1`. Candidate
-preparation does not imply materialization: until that protected tag and GitHub Release assets
-exist, `v0.9.0a1` remains the latest public distribution. PyPI and TestPyPI publication are
-prohibited until separately and explicitly authorized.
+A source version `X.Y.ZrcN` maps to the protected repository tag `vX.Y.Z-rc.N`; a stable source
+version `X.Y.Z` maps to `vX.Y.Z`. A matching tag and GitHub Release are the authoritative record of
+publication. The repository does not duplicate that external state in a checked-in boolean. PyPI
+and TestPyPI publication are prohibited until separately and explicitly authorized.

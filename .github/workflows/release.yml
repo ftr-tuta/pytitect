@@ -26,6 +26,8 @@ jobs:
           SHA: ${{ inputs.commit_sha }}
           RUN_ID: ${{ inputs.ci_run_id }}
         run: |
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)" = "$SHA"
           test "$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json workflowName --jq .workflowName)" = "CI"
           test "$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json event --jq .event)" = "push"
           test "$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json headBranch --jq .headBranch)" = "main"
@@ -63,19 +65,34 @@ jobs:
           PY
           test -z "$(git status --porcelain)"
           test "$(git rev-parse HEAD)" = "${{ inputs.commit_sha }}"
+          echo "SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
+      - name: Validate existing tag identity
+        run: |
+          if git rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null; then
+            test "$(git rev-list -n 1 "$TAG")" = "${{ inputs.commit_sha }}" || {
+              echo "Existing tag ${TAG} points to a different commit" >&2
+              exit 1
+            }
+            echo "TAG_EXISTS=true" >> "$GITHUB_ENV"
+          else
+            echo "TAG_EXISTS=false" >> "$GITHUB_ENV"
+          fi
       - run: uv sync --all-extras --frozen
       - run: uv run python tool/verify.py --skip-build
+      - name: Extract this version's release notes
+        run: uv run python tool/release_notes.py --version "$VERSION" --output release-notes.md
       - name: Build release artifacts once
         run: |
           uv run python -m build --no-isolation
           uv run python -m twine check dist/*
           uv run python tool/package_smoke.py dist/*.whl
-          cd dist
-          sha256sum pytitect-* > SHA256SUMS
       - name: Create SPDX SBOM
-        env:
-          SOURCE_DATE_EPOCH: "0"
         run: uv run python tool/sbom.py uv.lock "dist/pytitect-${VERSION}.spdx.json"
+      - name: Create deterministic artifact hashes
+        run: |
+          cd dist
+          export LC_ALL=C
+          sha256sum pytitect-* > SHA256SUMS
       - id: attest
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
@@ -96,10 +113,19 @@ jobs:
         run: |
           git config user.name ftr
           git config user.email ftr@tuta.com
-          git tag -a "$TAG" "$SHA" -m "Pytitect ${VERSION}"
-          git push origin "refs/tags/${TAG}"
-          if test "$PRERELEASE" = true; then
-            gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --prerelease --verify-tag --title "Pytitect ${VERSION}" --notes-file CHANGELOG.md
+          if test "$TAG_EXISTS" = false; then
+            git tag -a "$TAG" "$SHA" -m "Pytitect ${VERSION}"
+            git push origin "refs/tags/${TAG}"
+          fi
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+            if test "$PRERELEASE" = true; then
+              gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --prerelease --title "Pytitect ${VERSION}" --notes-file release-notes.md
+            else
+              gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --latest --title "Pytitect ${VERSION}" --notes-file release-notes.md
+            fi
+          elif test "$PRERELEASE" = true; then
+            gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --prerelease --verify-tag --title "Pytitect ${VERSION}" --notes-file release-notes.md
           else
-            gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag --title "Pytitect ${VERSION}" --notes-file CHANGELOG.md
+            gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --latest --verify-tag --title "Pytitect ${VERSION}" --notes-file release-notes.md
           fi

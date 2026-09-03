@@ -72,6 +72,8 @@ def main() -> int:
     run(python, "-m", "pytest")
     run(python, "tool/coverage_gate.py")
     run(python, "tool/docs_quality.py")
+    run(python, "tool/release_notes.py", "--check")
+    run(python, "tool/release_tree.py")
     run(python, "tool/api_snapshot.py")
     run(python, "tool/sync_bundle.py")
     run(python, "tool/reference_project.py")

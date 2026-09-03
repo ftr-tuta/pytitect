@@ -1,7 +1,8 @@
 {
-  "schema_version": 1,
-  "candidate": "1.0.0rc1",
-  "materialized": false,
+  "schema_version": 2,
+  "package_version": "1.0.0rc1",
+  "release_tag": "v1.0.0-rc.1",
+  "distribution_authority": "github-releases",
   "canonicalization": "RFC 8785 with I-JSON inputs",
   "fixtures": [
     {

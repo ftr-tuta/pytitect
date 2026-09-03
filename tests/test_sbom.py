@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from pytitect import __version__
+
 
 def test_sbom_resolves_unversioned_editable_root(tmp_path: Path) -> None:
     lock = tmp_path / "uv.lock"
@@ -37,7 +39,7 @@ def test_sbom_resolves_unversioned_editable_root(tmp_path: Path) -> None:
 
     document = json.loads(output.read_text())
     versions = {package["name"]: package.get("versionInfo") for package in document["packages"]}
-    assert versions == {"dependency": "1.2.3", "pytitect": "1.0.0rc1"}
+    assert versions == {"dependency": "1.2.3", "pytitect": __version__}
     assert document["creationInfo"]["created"] == "1970-01-01T00:00:00Z"
     describes = [
         relation

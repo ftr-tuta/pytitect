@@ -29,6 +29,24 @@ class AbstractIdempotencyModel(models.Model):
         abstract = True
 
 
+class AbstractMutationBatchModel(models.Model):
+    namespace: models.CharField[str, str] = models.CharField(max_length=255)
+    batch_id: models.CharField[str, str] = models.CharField(max_length=255)
+    fingerprint: models.CharField[str, str] = models.CharField(max_length=64)
+    reservation_token: models.CharField[str, str] = models.CharField(max_length=64)
+    state: models.CharField[str, str] = models.CharField(max_length=32)
+    total_items: models.PositiveIntegerField[int, int] = models.PositiveIntegerField()
+    next_index: models.PositiveIntegerField[int, int] = models.PositiveIntegerField(default=0)
+    receipts: models.JSONField[object, object] = models.JSONField(default=list)
+    lease_expires_at: models.DateTimeField[datetime, datetime] = models.DateTimeField()
+    retention_expires_at: models.DateTimeField[datetime, datetime] = models.DateTimeField(null=True)
+    uncertainty_reason: models.TextField[str, str] = models.TextField(null=True)
+    updated_at: models.DateTimeField[datetime, datetime] = models.DateTimeField()
+
+    class Meta:
+        abstract = True
+
+
 class AbstractReplayModel(models.Model):
     namespace: models.CharField[str, str] = models.CharField(max_length=255)
     digest: models.CharField[str, str] = models.CharField(max_length=64)

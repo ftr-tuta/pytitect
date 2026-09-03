@@ -68,6 +68,25 @@ from pytitect.receipts import (
 )
 from pytitect.security import ReplayAccepted, ReplayDetected
 from pytitect.security.replay import ReplayDecision
+from pytitect.sync.batches import (
+    BatchConflict,
+    BatchInProgress,
+    BatchItemReceipt,
+    BatchReplay,
+    BatchUncertain,
+    MutationBatchAdvanceResult,
+    MutationBatchBeginResult,
+    MutationBatchCompleted,
+    MutationBatchCompleteResult,
+    MutationBatchLease,
+    MutationBatchLeaseRenewed,
+    MutationBatchMarkedUncertain,
+    MutationBatchProgressed,
+    MutationBatchRenewResult,
+    MutationBatchState,
+    MutationBatchUncertainResult,
+    StaleMutationBatchLease,
+)
 
 T = TypeVar("T")
 PayloadT = TypeVar("PayloadT")
@@ -367,6 +386,401 @@ class DjangoIdempotencyStore[T]:
         now: datetime,
     ) -> AbandonReservationResult:
         return self._abandon(token, now=now, using=self.using)
+
+
+class DjangoMutationBatchStore[T]:
+    """Explicit callback or PostgreSQL adapter for resumable mutation batches."""
+
+    def __init__(
+        self,
+        *,
+        using: str,
+        begin: Callable[..., MutationBatchBeginResult[T]],
+        renew: Callable[..., MutationBatchRenewResult[T]],
+        advance: Callable[..., MutationBatchAdvanceResult[T]],
+        complete: Callable[..., MutationBatchCompleteResult],
+        mark_uncertain: Callable[..., MutationBatchUncertainResult],
+    ) -> None:
+        self.using = _alias(using)
+        self._begin = begin
+        self._renew = renew
+        self._advance = advance
+        self._complete = complete
+        self._uncertain = mark_uncertain
+
+    @classmethod
+    def from_callbacks(
+        cls,
+        *,
+        using: str,
+        begin: Callable[..., MutationBatchBeginResult[T]],
+        renew: Callable[..., MutationBatchRenewResult[T]],
+        advance: Callable[..., MutationBatchAdvanceResult[T]],
+        complete: Callable[..., MutationBatchCompleteResult],
+        mark_uncertain: Callable[..., MutationBatchUncertainResult],
+    ) -> DjangoMutationBatchStore[T]:
+        return cls(
+            using=using,
+            begin=begin,
+            renew=renew,
+            advance=advance,
+            complete=complete,
+            mark_uncertain=mark_uncertain,
+        )
+
+    @classmethod
+    def from_model(
+        cls,
+        model: Any,
+        *,
+        using: str,
+        encode_result: Encode[T],
+        decode_result: Decode[T],
+    ) -> DjangoMutationBatchStore[T]:
+        _unique(model, {"namespace", "batch_id"})
+
+        def encode_receipts(receipts: Sequence[BatchItemReceipt[T]]) -> list[JsonValue]:
+            encoded: list[JsonValue] = []
+            for receipt in receipts:
+                result = encode_result(receipt.result)
+                validate_json(result)
+                encoded.append({"item_id": receipt.item_id, "result": result})
+            validate_json(encoded)
+            return encoded
+
+        def decode_receipts(value: object) -> tuple[BatchItemReceipt[T], ...]:
+            if not isinstance(value, list):
+                raise ValueError("stored mutation batch receipts must be a list")
+            receipts: list[BatchItemReceipt[T]] = []
+            for raw in value:
+                if not isinstance(raw, dict) or set(raw) != {"item_id", "result"}:
+                    raise ValueError("stored mutation batch receipt is invalid")
+                item_id = raw["item_id"]
+                if not isinstance(item_id, str) or not item_id:
+                    raise ValueError("stored mutation batch item ID is invalid")
+                result = cast(JsonValue, raw["result"])
+                validate_json(result)
+                receipts.append(BatchItemReceipt(item_id, decode_result(result)))
+            return tuple(receipts)
+
+        def lease(row: Any, *, resumed: bool) -> MutationBatchLease[T]:
+            return MutationBatchLease(
+                namespace=row.namespace,
+                batch_id=row.batch_id,
+                token=row.reservation_token,
+                state=MutationBatchState(row.state),
+                next_index=row.next_index,
+                total_items=row.total_items,
+                receipts=decode_receipts(row.receipts),
+                expires_at=row.lease_expires_at,
+                resumed=resumed,
+            )
+
+        def active(row: Any, current: MutationBatchLease[T], now: datetime) -> bool:
+            return bool(
+                row is not None
+                and row.reservation_token == current.token
+                and row.state
+                in {
+                    MutationBatchState.PROCESSING.value,
+                    MutationBatchState.PARTIALLY_COMMITTED.value,
+                }
+                and row.lease_expires_at > now
+                and row.lease_expires_at == current.expires_at
+                and row.next_index == current.next_index
+                and decode_receipts(row.receipts) == current.receipts
+            )
+
+        def begin(
+            namespace: str,
+            batch_id: str,
+            fingerprint: RequestFingerprint,
+            *,
+            total_items: int,
+            now: datetime,
+            lease_ttl: timedelta,
+            using: str,
+        ) -> MutationBatchBeginResult[T]:
+            _postgresql(using)
+            _utc(now)
+            if (
+                not namespace
+                or not batch_id
+                or isinstance(total_items, bool)
+                or not isinstance(total_items, int)
+                or total_items < 0
+                or lease_ttl <= timedelta(0)
+            ):
+                raise ValueError("valid batch identity, item count, and lease_ttl are required")
+            from django.db import transaction
+
+            lookup = {"namespace": namespace, "batch_id": batch_id}
+            with transaction.atomic(using=using):
+                row = _locked_first(model, using, lookup)
+                if (
+                    row is not None
+                    and row.state
+                    in {
+                        MutationBatchState.COMPLETED.value,
+                        MutationBatchState.UNCERTAIN.value,
+                    }
+                    and row.retention_expires_at is not None
+                    and row.retention_expires_at <= now
+                ):
+                    row.delete(using=using)
+                    row = None
+                if row is None:
+                    token = uuid.uuid4().hex
+                    row, created = _create_or_locked(
+                        model,
+                        using,
+                        lookup,
+                        {
+                            "fingerprint": str(fingerprint.value),
+                            "reservation_token": token,
+                            "state": MutationBatchState.PROCESSING.value,
+                            "total_items": total_items,
+                            "next_index": 0,
+                            "receipts": [],
+                            "lease_expires_at": now + lease_ttl,
+                            "retention_expires_at": None,
+                            "uncertainty_reason": None,
+                            "updated_at": now,
+                        },
+                    )
+                    if created:
+                        return lease(row, resumed=False)
+                if row.fingerprint != str(fingerprint.value) or row.total_items != total_items:
+                    return BatchConflict(None, "the batch ID was used with different items")
+                if row.state == MutationBatchState.COMPLETED.value:
+                    return BatchReplay(decode_receipts(row.receipts))
+                if row.state == MutationBatchState.UNCERTAIN.value:
+                    return BatchUncertain(
+                        None, row.uncertainty_reason or "the prior batch outcome is unknown"
+                    )
+                if row.lease_expires_at > now:
+                    return BatchInProgress(None, row.lease_expires_at)
+                row.reservation_token = uuid.uuid4().hex
+                row.lease_expires_at = now + lease_ttl
+                row.updated_at = now
+                row.save(
+                    using=using,
+                    update_fields=["reservation_token", "lease_expires_at", "updated_at"],
+                )
+                return lease(row, resumed=True)
+
+        def renew(
+            current: MutationBatchLease[T],
+            *,
+            now: datetime,
+            lease_ttl: timedelta,
+            using: str,
+        ) -> MutationBatchRenewResult[T]:
+            _postgresql(using)
+            _utc(now)
+            if lease_ttl <= timedelta(0):
+                raise ValueError("lease_ttl must be positive")
+            from django.db import transaction
+
+            with transaction.atomic(using=using):
+                row = _locked_first(
+                    model,
+                    using,
+                    {"namespace": current.namespace, "batch_id": current.batch_id},
+                )
+                if not active(row, current, now):
+                    return StaleMutationBatchLease()
+                row.lease_expires_at = now + lease_ttl
+                row.updated_at = now
+                row.save(using=using, update_fields=["lease_expires_at", "updated_at"])
+                return MutationBatchLeaseRenewed(lease(row, resumed=current.resumed))
+
+        def advance(
+            current: MutationBatchLease[T],
+            receipt: BatchItemReceipt[T],
+            *,
+            now: datetime,
+            lease_ttl: timedelta,
+            using: str,
+        ) -> MutationBatchAdvanceResult[T]:
+            _postgresql(using)
+            _utc(now)
+            if lease_ttl <= timedelta(0):
+                raise ValueError("lease_ttl must be positive")
+            from django.db import transaction
+
+            with transaction.atomic(using=using):
+                row = _locked_first(
+                    model,
+                    using,
+                    {"namespace": current.namespace, "batch_id": current.batch_id},
+                )
+                if not active(row, current, now) or row.next_index >= row.total_items:
+                    return StaleMutationBatchLease("batch progress is stale or already complete")
+                row.receipts = encode_receipts((*current.receipts, receipt))
+                row.next_index += 1
+                row.state = MutationBatchState.PARTIALLY_COMMITTED.value
+                row.lease_expires_at = now + lease_ttl
+                row.updated_at = now
+                row.save(
+                    using=using,
+                    update_fields=[
+                        "receipts",
+                        "next_index",
+                        "state",
+                        "lease_expires_at",
+                        "updated_at",
+                    ],
+                )
+                return MutationBatchProgressed(lease(row, resumed=current.resumed))
+
+        def complete(
+            current: MutationBatchLease[T],
+            *,
+            now: datetime,
+            retention_ttl: timedelta,
+            using: str,
+        ) -> MutationBatchCompleteResult:
+            _postgresql(using)
+            _utc(now)
+            if retention_ttl <= timedelta(0):
+                raise ValueError("retention_ttl must be positive")
+            from django.db import transaction
+
+            with transaction.atomic(using=using):
+                row = _locked_first(
+                    model,
+                    using,
+                    {"namespace": current.namespace, "batch_id": current.batch_id},
+                )
+                if not active(row, current, now) or row.next_index != row.total_items:
+                    return StaleMutationBatchLease("batch is stale or has uncommitted items")
+                retained_until = now + retention_ttl
+                row.state = MutationBatchState.COMPLETED.value
+                row.retention_expires_at = retained_until
+                row.updated_at = now
+                row.save(
+                    using=using,
+                    update_fields=["state", "retention_expires_at", "updated_at"],
+                )
+                return MutationBatchCompleted(retained_until)
+
+        def mark_uncertain(
+            current: MutationBatchLease[T],
+            reason: str,
+            *,
+            now: datetime,
+            retention_ttl: timedelta,
+            using: str,
+        ) -> MutationBatchUncertainResult:
+            _postgresql(using)
+            _utc(now)
+            if not reason or retention_ttl <= timedelta(0):
+                raise ValueError("an uncertainty reason and positive retention_ttl are required")
+            from django.db import transaction
+
+            with transaction.atomic(using=using):
+                row = _locked_first(
+                    model,
+                    using,
+                    {"namespace": current.namespace, "batch_id": current.batch_id},
+                )
+                if not active(row, current, now):
+                    return StaleMutationBatchLease()
+                retained_until = now + retention_ttl
+                row.state = MutationBatchState.UNCERTAIN.value
+                row.uncertainty_reason = reason
+                row.retention_expires_at = retained_until
+                row.updated_at = now
+                row.save(
+                    using=using,
+                    update_fields=[
+                        "state",
+                        "uncertainty_reason",
+                        "retention_expires_at",
+                        "updated_at",
+                    ],
+                )
+                return MutationBatchMarkedUncertain(retained_until)
+
+        return cls.from_callbacks(
+            using=using,
+            begin=begin,
+            renew=renew,
+            advance=advance,
+            complete=complete,
+            mark_uncertain=mark_uncertain,
+        )
+
+    def begin(
+        self,
+        namespace: str,
+        batch_id: str,
+        fingerprint: RequestFingerprint,
+        *,
+        total_items: int,
+        now: datetime,
+        lease_ttl: timedelta,
+    ) -> MutationBatchBeginResult[T]:
+        return self._begin(
+            namespace,
+            batch_id,
+            fingerprint,
+            total_items=total_items,
+            now=now,
+            lease_ttl=lease_ttl,
+            using=self.using,
+        )
+
+    def renew(
+        self,
+        lease: MutationBatchLease[T],
+        *,
+        now: datetime,
+        lease_ttl: timedelta,
+    ) -> MutationBatchRenewResult[T]:
+        return self._renew(lease, now=now, lease_ttl=lease_ttl, using=self.using)
+
+    def advance(
+        self,
+        lease: MutationBatchLease[T],
+        receipt: BatchItemReceipt[T],
+        *,
+        now: datetime,
+        lease_ttl: timedelta,
+    ) -> MutationBatchAdvanceResult[T]:
+        return self._advance(
+            lease,
+            receipt,
+            now=now,
+            lease_ttl=lease_ttl,
+            using=self.using,
+        )
+
+    def complete(
+        self,
+        lease: MutationBatchLease[T],
+        *,
+        now: datetime,
+        retention_ttl: timedelta,
+    ) -> MutationBatchCompleteResult:
+        return self._complete(lease, now=now, retention_ttl=retention_ttl, using=self.using)
+
+    def mark_uncertain(
+        self,
+        lease: MutationBatchLease[T],
+        reason: str,
+        *,
+        now: datetime,
+        retention_ttl: timedelta,
+    ) -> MutationBatchUncertainResult:
+        return self._uncertain(
+            lease,
+            reason,
+            now=now,
+            retention_ttl=retention_ttl,
+            using=self.using,
+        )
 
 
 class DjangoReplayStore:

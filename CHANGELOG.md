@@ -5,6 +5,19 @@ Semantic Versioning with the prerelease rules documented in `docs/versioning.md`
 
 ## Unreleased
 
+### Added
+
+- Dedicated finite and Django/PostgreSQL mutation-batch stores with explicit processing,
+  partially committed, completed, and uncertain states.
+
+### Changed
+
+- Mutation batches renew execution leases at item boundaries, atomically retain per-item progress,
+  and can safely resume a proven committed prefix after a worker crash.
+- `BatchItemsCommittedEnvelopeUnconfirmed` is recoverable by retry while item receipts remain
+  retained. The coordinator now requires a `MutationBatchStore` and uses an explicit clock instead
+  of accepting an execution timestamp.
+
 ## 1.0.0rc1 - candidate not materialized
 
 Candidate metadata:

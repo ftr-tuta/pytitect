@@ -6,6 +6,7 @@ from pytitect.django.abstract_models import (
     AbstractIdempotencyModel,
     AbstractInboxModel,
     AbstractLeaseAuthorityModel,
+    AbstractMutationBatchModel,
     AbstractOutboxModel,
     AbstractReceiptModel,
     AbstractReplayModel,
@@ -18,6 +19,15 @@ class IdempotencyRecord(AbstractIdempotencyModel):
             models.UniqueConstraint(
                 fields=["namespace", "subject", "operation", "idempotency_key"],
                 name="mobile_v2_idempotency_identity",
+            )
+        ]
+
+
+class MutationBatchRecord(AbstractMutationBatchModel):
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["namespace", "batch_id"], name="mobile_v2_mutation_batch_identity"
             )
         ]
 

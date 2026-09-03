@@ -4,8 +4,9 @@ Pytitect is a collection of explicit, consumer-owned building blocks for reliabl
 services. Its core has no runtime dependencies. Optional adapters support Django 5.2, Django
 REST Framework, drf-spectacular, RFC 8785, DPoP, and HTTP Message Signatures.
 
-> **Status:** the source is prepared as `1.0.0rc1`; candidate tag `v1.0.0-rc.1` has not
-> been materialized. `v0.9.0a1` remains the latest public distribution.
+> **Release status:** the source version maps deterministically to a protected repository tag.
+> Published tags, assets, and notes are authoritative in GitHub Releases; package-index publication
+> is disabled.
 
 ## Design
 

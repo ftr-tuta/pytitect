@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 import re
 import subprocess
 import sys
@@ -14,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 COMPATIBILITY = ROOT / "docs" / "compatibility.md"
 SNAPSHOT = ROOT / "tool" / "public-api.txt"
 ABOUT = ROOT / "src" / "pytitect" / "__about__.py"
+RELEASE_MANIFEST = ROOT / "interop" / "manifest.json"
 
 REMOVED_SYMBOLS = (
     ("pytitect.checkpoints", "CheckpointCoordinator"),
@@ -151,11 +153,29 @@ def check_versions() -> None:
     if match is None:
         raise SystemExit("package version source is malformed")
     version = match.group(1)
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    versioning = (ROOT / "docs" / "versioning.md").read_text(encoding="utf-8")
     sync = (ROOT / "docs" / "sync.md").read_text(encoding="utf-8")
-    if version not in readme or version not in versioning:
-        raise SystemExit("package version status drifted from documentation")
+    release = json.loads(RELEASE_MANIFEST.read_text(encoding="utf-8"))
+    candidate = re.fullmatch(r"(\d+\.\d+\.\d+)rc([1-9]\d*)", version)
+    expected_tag = f"v{candidate.group(1)}-rc.{candidate.group(2)}" if candidate else f"v{version}"
+    if release.get("package_version") != version or release.get("release_tag") != expected_tag:
+        raise SystemExit("release manifest drifted from the package version")
+    if "materialized" in release:
+        raise SystemExit("release state must not be duplicated in a checked-in boolean")
+    configuration = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    project = configuration["project"]
+    assert isinstance(project, dict)
+    classifiers = project["classifiers"]
+    assert isinstance(classifiers, list)
+    expected_classifier = (
+        "Development Status :: 4 - Beta"
+        if candidate
+        else "Development Status :: 5 - Production/Stable"
+    )
+    if expected_classifier not in classifiers:
+        raise SystemExit("development-status classifier drifted from the package version")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    if re.search(rf"^## {re.escape(version)} - \d{{4}}-\d{{2}}-\d{{2}}$", changelog, re.M) is None:
+        raise SystemExit("current package version has no dated changelog section")
     if "titect-sync/1" not in sync or "independently" not in sync:
         raise SystemExit("sync protocol version independence is undocumented")
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")

@@ -24,7 +24,7 @@ from rest_framework.exceptions import AuthenticationFailed, Throttled
 
 django.setup()
 
-from pytitect import Limits
+from pytitect import Limits, __version__
 from pytitect.django.transactions import DjangoTransactionBoundary
 from pytitect.drf.fields import (
     BoundedJSONField,
@@ -52,7 +52,7 @@ def test_core_and_explicit_adapters_import_without_settings() -> None:
         text=True,
     )
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "1.0.0rc1"
+    assert result.stdout.strip() == __version__
 
 
 class PayloadSerializer(ClosedSerializer):

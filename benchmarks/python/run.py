@@ -249,7 +249,7 @@ async def scenario(args, name):
                     "effects": effects,
                     "outbox": rows,
                     "inbox": useful,
-                    "publication_retries": retries,
+                    "publication_retries": int(retries),
                 },
                 "load_generator": {
                     "workers": args.concurrency,

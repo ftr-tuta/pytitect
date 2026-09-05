@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import platform
+import secrets
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -80,6 +81,13 @@ def candidate_reference(dart_root: Path, dart_sha: str, *, mode: str) -> dict[st
     dart_version = json.loads((dart_root / "tool/package_release_contract.json").read_text())[
         "workspaceCohort"
     ]["version"]
+    pin = json.loads((ROOT / "interop/dart/candidate.json").read_text())
+    if (
+        pin.get("schemaVersion") != 1
+        or pin.get("dartSha") != dart_sha
+        or pin.get("dartVersion") != dart_version
+    ):
+        raise ValueError("Dart candidate version or source differs from the committed pin")
     if mode == "integrated":
         subprocess.run(
             [
@@ -96,6 +104,7 @@ def candidate_reference(dart_root: Path, dart_sha: str, *, mode: str) -> dict[st
         )
     return {
         "schemaVersion": 1,
+        "executionId": secrets.token_hex(16),
         "mode": mode,
         "releaseEligible": False,
         "pythonSha": python_sha,
@@ -187,7 +196,7 @@ def main() -> int:
     parser.add_argument("--mode", choices=["candidate", "integrated"], default="candidate")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    args.output.mkdir(parents=True, exist_ok=True)
+    args.output.mkdir(parents=True, exist_ok=False)
     report: dict[str, Any] = {
         "schemaVersion": 1,
         "status": "failed",

@@ -340,10 +340,70 @@ jobs:
           sudo apt-get install -y asciidoctor
           asciidoctor --failure-level WARN -o /tmp/roadmap.html docs/large-scale-architecture-roadmap.adoc
 
+  paired:
+    name: CI / Paired conformance and recovery
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CHROME_EXECUTABLE: /usr/bin/google-chrome
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14.4"
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.11.7"
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: "3.47.1"
+          channel: stable
+          cache: true
+      - run: uv sync --all-extras --frozen
+      - name: Fetch the committed Dart candidate
+        run: |
+          python - <<'PYTHON'
+          import json, os, re, subprocess
+          from pathlib import Path
+          pin = json.loads(Path("interop/dart/candidate.json").read_text())
+          revision = pin["dartSha"]
+          if not re.fullmatch("[0-9a-f]{40}", revision):
+              raise SystemExit("Dart candidate must be a full committed SHA")
+          target = Path(os.environ["RUNNER_TEMP"]) / "dartitect-candidate"
+          subprocess.run(["git", "clone", "--no-checkout", "https://github.com/ftr-tuta/dartitect.git", str(target)], check=True)
+          subprocess.run(["git", "-C", str(target), "checkout", "--detach", revision], check=True)
+          with open(os.environ["GITHUB_ENV"], "a") as output:
+              output.write(f"DART_CANDIDATE_ROOT={target}\nDART_CANDIDATE_SHA={revision}\n")
+          PYTHON
+      - name: Resolve the pinned Dart workspace
+        run: |
+          cd "$DART_CANDIDATE_ROOT"
+          flutter pub get
+          git diff --exit-code
+      - name: Real paired conformance, recovery and representative capacity
+        run: >-
+          uv run python tool/integration_environment.py --services postgres,nats
+          --record "${{ runner.temp }}/paired-infrastructure.json" --command-timeout 1500 --
+          uv run python -m tool.paired_gate
+          --dart-root "$DART_CANDIDATE_ROOT" --dart-sha "$DART_CANDIDATE_SHA"
+          --mode candidate --output "${{ runner.temp }}/paired-evidence"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: paired-candidate-evidence
+          path: |
+            ${{ runner.temp }}/paired-evidence/
+            ${{ runner.temp }}/paired-infrastructure.json
+          retention-days: 90
+
   required:
     name: CI / Required
     if: always()
-    needs: [lint, typecheck, unit, django-minimum, django-6-0, django-latest, postgres, package, django-canary, django-reference, contracts-security, event-platform-contracts, reliability]
+    needs: [lint, typecheck, unit, django-minimum, django-6-0, django-latest, postgres, package, django-canary, django-reference, contracts-security, event-platform-contracts, reliability, paired]
     runs-on: ubuntu-24.04
     steps:
       - name: Require every CI job

@@ -60,6 +60,7 @@ dev = [
   "django-stubs>=5.2,<6.2",
   "djangorestframework-stubs>=3.16,<4",
   "hatchling>=1.27",
+  "httpx>=0.28,<1",
   "hypothesis>=6.130",
   "mypy>=1.15",
   "psycopg[binary]>=3.2,<4",
@@ -68,6 +69,7 @@ dev = [
   "ruff>=0.11",
   "twine>=6",
   "types-PyYAML>=6",
+  "uvicorn>=0.35,<1",
 ]
 
 [tool.hatch.version]
@@ -80,6 +82,7 @@ packages = ["src/pytitect"]
 include = [
   "/src",
   "/tests",
+  "/benchmarks",
   "/README.md",
   "/LICENSE",
   "/CHANGELOG.md",
@@ -115,9 +118,15 @@ mypy_path = "src"
 packages = ["pytitect"]
 
 [tool.pytest.ini_options]
-addopts = "--strict-config --strict-markers --cov=pytitect --cov-branch --cov-report=term-missing"
+addopts = "-m 'not integration and not postgres' --strict-config --strict-markers --cov=pytitect --cov-branch --cov-report=term-missing"
 testpaths = ["tests"]
-markers = ["postgres: requires an explicitly configured PostgreSQL test database"]
+markers = [
+  "postgres: requires an explicitly configured PostgreSQL test database",
+  "integration: live infrastructure, explicitly selected and never silently skipped",
+  "nats: live NATS JetStream",
+  "localstack: live LocalStack EventBridge and SQS",
+  "aws_live: manual real AWS EventBridge and SQS",
+]
 
 [tool.coverage.run]
 source = ["pytitect"]

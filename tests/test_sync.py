@@ -239,7 +239,7 @@ def test_mutation_batch_store_lease_progress_retention_and_uncertainty() -> None
 
 
 def test_mutation_batches_empty_order_replay_and_envelope_uncertainty() -> None:
-    from conftest import ManualClock
+    from tests.conftest import ManualClock
 
     clock = ManualClock()
     envelopes = InMemoryMutationBatchStore()
@@ -342,7 +342,7 @@ def test_mutation_batches_empty_order_replay_and_envelope_uncertainty() -> None:
 
 
 def test_per_item_cas_failure_rolls_back_that_item() -> None:
-    from conftest import ManualClock
+    from tests.conftest import ManualClock
 
     clock = ManualClock()
     mutations: list[str] = []

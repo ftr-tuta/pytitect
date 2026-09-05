@@ -34,7 +34,14 @@ class PublicationRejected:
             raise ValueError("rejected publication requires a reason")
 
 
-type PublicationResult = PublicationConfirmed | PublicationRetryable | PublicationRejected
+@dataclass(frozen=True, slots=True)
+class PublicationUncertain:
+    reason: str
+
+
+type PublicationResult = (
+    PublicationConfirmed | PublicationRetryable | PublicationRejected | PublicationUncertain
+)
 
 
 @dataclass(frozen=True, slots=True)

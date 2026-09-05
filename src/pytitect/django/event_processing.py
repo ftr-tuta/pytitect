@@ -9,9 +9,12 @@ from datetime import datetime, timedelta
 from typing import Protocol, TypeVar
 
 from pytitect.aio import AsyncDelivery
+from pytitect.aio.resilience import SettlementResult
 from pytitect.application import HandlingContext
-from pytitect.messaging import Message
-from pytitect.outbox import OutboxAddResult, OutboxClaim, OutboxEnvelope, OutboxStore
+from pytitect.core import OpaqueId
+from pytitect.django.relay import DjangoRelayStore
+from pytitect.messaging import MessageValue
+from pytitect.outbox import OutboxAddResult, OutboxClaim, OutboxEnvelope
 
 ResultT = TypeVar("ResultT")
 
@@ -78,7 +81,7 @@ class DjangoDeliveryQuarantined:
 type DjangoDeliveryResult = (
     DjangoDeliveryCommitted | DjangoDeliveryRetryable | DjangoDeliveryQuarantined
 )
-type DjangoMessageHandler = Callable[[Message, HandlingContext], DjangoDeliveryResult]
+type DjangoMessageHandler = Callable[[MessageValue, HandlingContext], DjangoDeliveryResult]
 
 
 class DjangoTransactionalConsumer:
@@ -119,7 +122,7 @@ class DjangoAsyncOutboxStore[PayloadT]:
 
     def __init__(
         self,
-        store: OutboxStore[PayloadT],
+        store: DjangoRelayStore[PayloadT],
         *,
         transaction: SyncTransactionRunner,
         bridge: AsyncSyncBridge,
@@ -132,17 +135,54 @@ class DjangoAsyncOutboxStore[PayloadT]:
         return await self._run(lambda: self._store.add(envelope))
 
     async def claim(
-        self, *, now: datetime, limit: int, claim_ttl: timedelta
+        self, *, now: datetime, limit: int, claim_ttl: timedelta, max_bytes: int | None = None
     ) -> Sequence[OutboxClaim[PayloadT]]:
-        return await self._run(lambda: self._store.claim(now=now, limit=limit, claim_ttl=claim_ttl))
+        return await self._run(
+            lambda: self._store.claim(
+                now=now, limit=limit, claim_ttl=claim_ttl, max_bytes=max_bytes
+            )
+        )
 
-    async def delivered(self, claim: OutboxClaim[PayloadT], *, at: datetime) -> bool:
+    async def delivered(self, claim: OutboxClaim[PayloadT], *, at: datetime) -> SettlementResult:
         return await self._run(lambda: self._store.delivered(claim, at=at))
 
-    async def retry(self, claim: OutboxClaim[PayloadT], *, available_at: datetime) -> bool:
-        return await self._run(lambda: self._store.retry(claim, available_at=available_at))
+    async def retry(
+        self, claim: OutboxClaim[PayloadT], *, available_at: datetime, at: datetime
+    ) -> SettlementResult:
+        return await self._run(lambda: self._store.retry(claim, available_at=available_at, at=at))
 
-    async def failed(self, claim: OutboxClaim[PayloadT], *, reason: str, at: datetime) -> bool:
+    async def defer(
+        self, claim: OutboxClaim[PayloadT], *, available_at: datetime, at: datetime
+    ) -> SettlementResult:
+        return await self._run(lambda: self._store.defer(claim, available_at=available_at, at=at))
+
+    async def uncertain(
+        self, claim: OutboxClaim[PayloadT], *, reason: str, at: datetime
+    ) -> SettlementResult:
+        return await self._run(lambda: self._store.uncertain(claim, reason=reason, at=at))
+
+    async def resolve_uncertain(
+        self,
+        message_id: OpaqueId[object],
+        *,
+        expected_at: datetime,
+        delivered: bool,
+        available_at: datetime,
+        at: datetime,
+    ) -> SettlementResult:
+        return await self._run(
+            lambda: self._store.resolve_uncertain(
+                message_id,
+                expected_at=expected_at,
+                delivered=delivered,
+                available_at=available_at,
+                at=at,
+            )
+        )
+
+    async def failed(
+        self, claim: OutboxClaim[PayloadT], *, reason: str, at: datetime
+    ) -> SettlementResult:
         return await self._run(lambda: self._store.failed(claim, reason=reason, at=at))
 
     async def _run(self, operation: Callable[[], ResultT]) -> ResultT:

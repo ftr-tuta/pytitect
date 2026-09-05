@@ -6,12 +6,10 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import cast
 
 from pytitect.contracts import ContractManifest
-from pytitect.core import JsonValue
 from pytitect.observability import pseudonymous_attribute
-from pytitect.sync import decode_sync_document
+from pytitect.sync import decode_sync_raw
 from pytitect.trace import parse_trace_context
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,17 +24,16 @@ def bundle_manifest() -> ContractManifest:
 
 def validate_fixtures() -> None:
     for path in sorted((BUNDLE / "fixtures" / "positive").glob("*.json")):
-        value = json.loads(path.read_text())
         if path.name in {"trace.json", "pseudonym.json"}:
             continue
-        decode_sync_document(cast(JsonValue, value))
+        decode_sync_raw(path.read_bytes())
 
     negative_documents = json.loads(
         (BUNDLE / "fixtures" / "negative" / "documents.json").read_text()
     )
     for case in negative_documents["cases"]:
         try:
-            decode_sync_document(cast(JsonValue, case["document"]))
+            decode_sync_raw(json.dumps(case["document"]).encode())
         except ValueError:
             continue
         raise ValueError(f"negative document fixture was accepted: {case['name']}")

@@ -102,3 +102,6 @@ Local state, inbox completion, outbox append, saga state, job transitions, proje
 event appends, snapshots, and related timers are atomic when they participate in one decision. No
 external effect occurs inside that transaction. Every derived external effect is represented by an
 outbox message and performed later by a relay.
+
+See [independent reliability foundations](reliability-foundations.md) for current async adoption,
+implemented store inventory, live conformance and reproducible Python capacity validation.

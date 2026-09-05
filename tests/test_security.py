@@ -50,7 +50,7 @@ def test_canonical_json_ijson_base64url_and_hashes() -> None:
 
 
 def test_replay_store_atomic_decisions_and_capacity() -> None:
-    from conftest import ManualClock
+    from tests.conftest import ManualClock
 
     clock = ManualClock()
     store = InMemoryReplayStore(capacity=1)
@@ -81,7 +81,7 @@ def _public_jwk(private_key: ec.EllipticCurvePrivateKey) -> dict[str, str]:
 
 
 def test_dpop_real_es256_context_and_replay() -> None:
-    from conftest import ManualClock
+    from tests.conftest import ManualClock
 
     clock = ManualClock()
     private_key = ec.generate_private_key(ec.SECP256R1())
@@ -192,7 +192,7 @@ class HmacResolver(HTTPSignatureKeyResolver):
 
 
 def test_http_message_signature_real_crypto_policy_and_replay() -> None:
-    from conftest import ManualClock
+    from tests.conftest import ManualClock
 
     clock = ManualClock()
     body = b'{"ok":true}'
@@ -240,7 +240,7 @@ class FixedBackend:
 
 
 def test_http_message_signature_rejects_policy_boundaries() -> None:
-    from conftest import ManualClock
+    from tests.conftest import ManualClock
 
     clock = ManualClock()
     body = b"body"

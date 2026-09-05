@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from copy import deepcopy
 from datetime import datetime, timedelta
 from typing import Protocol
 
@@ -84,7 +85,8 @@ class _InMemoryAsyncUnitOfWork:
         lock: asyncio.Lock,
         capacity: int,
     ) -> None:
-        self._inbox = inbox
+        self._target_inbox = inbox
+        self._inbox = InMemoryInboxStore(capacity=capacity)
         self._decisions = decisions
         self._lock = lock
         self._capacity = capacity
@@ -98,6 +100,7 @@ class _InMemoryAsyncUnitOfWork:
         if self._entered:
             raise RuntimeError("unit of work is single-use")
         await self._lock.acquire()
+        self._inbox._entries = deepcopy(self._target_inbox._entries)
         self._entered = True
         return self
 
@@ -140,6 +143,8 @@ class _InMemoryAsyncUnitOfWork:
         self._active()
         if (scope, message_id, token) not in self._reservations:
             return False
+        if not self._inbox.complete(scope, message_id, token=token, now=now):
+            return False
         self._completions.append((scope, message_id, token, now))
         return True
 
@@ -155,6 +160,7 @@ class _InMemoryAsyncUnitOfWork:
             if not self._inbox.complete(scope, message_id, token=token, now=now):
                 await self.rollback()
                 raise RuntimeError("inbox completion compare-and-set failed")
+        self._target_inbox._entries = self._inbox._entries
         self._decisions.extend(self._staged)
         self._finished = True
 

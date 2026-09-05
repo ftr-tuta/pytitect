@@ -1,0 +1,21 @@
+{
+  "algorithm": "sha256",
+  "digest": "bb2caee81b30c81b69c528bc1dc0757b6388212d67e159b0f7e73fb0ed4e0a13",
+  "files": [
+    {
+      "path": "expectations.json",
+      "sha256": "0b38bf83b11e0cbf3b4938fb8299d3421a052ab84b2d1e2f5fac019c94aa6b74",
+      "size": 155131
+    },
+    {
+      "path": "legacy-vectors.json",
+      "sha256": "4b8e07fd58687ef10b56bd34da890442aa925c67d142382f8c48feac04ba37dd",
+      "size": 434899
+    },
+    {
+      "path": "vectors.json",
+      "sha256": "a16d96374b7d93d98b6a720db32b76ab9b6a260af2057ce1ec2a80fbed9f2424",
+      "size": 467078
+    }
+  ]
+}

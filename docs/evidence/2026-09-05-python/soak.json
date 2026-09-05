@@ -1,0 +1,80 @@
+{
+  "scope": "Python synthetic fixture; no paired client or global capacity claim",
+  "seed": 41,
+  "commit": "b54e68cda565e943cdf21a0503b1c7004e3c82ec",
+  "source_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "python": "3.14.4 (main, Apr 20 2026, 16:06:56) [GCC 15.2.1 20260209]",
+  "platform": "Linux-7.2.3-arch1-2-x86_64-with-glibc2.44",
+  "cpu_count": 4,
+  "versions": {
+    "pytitect": "1.6.0rc1",
+    "SQLAlchemy": "2.0.52",
+    "psycopg": "3.3.5",
+    "nats-py": "2.15.0",
+    "fastapi": "0.141.1",
+    "uvicorn": "0.52.4",
+    "httpx": "0.28.1"
+  },
+  "parameters": {
+    "scenarios": "soak",
+    "duration": 60.0,
+    "rate": 20.0,
+    "concurrency": 16,
+    "max_requests": 10000,
+    "seed": 41,
+    "max_rss_mib": 512,
+    "drain_timeout": 120.0,
+    "output": "/tmp/pytitect-soak-final.json"
+  },
+  "results": [
+    {
+      "scenario": "soak",
+      "passed": true,
+      "failures": [],
+      "seed": 41,
+      "offered": 1200,
+      "statuses": {
+        "201": 1191,
+        "503": 9
+      },
+      "duration_seconds": 60.10445118999996,
+      "useful_operations": 1191,
+      "useful_throughput": 19.23481845386227,
+      "latency_seconds": {
+        "p50": 0.0662178769998718,
+        "p95": 0.28414833699935116,
+        "p99": 0.44065122499887366,
+        "max": 0.8401726060001238
+      },
+      "peak_observations": {
+        "retried": 0,
+        "uncertain": 0,
+        "useful": 1191,
+        "accepted": 1191,
+        "rejected": 9,
+        "tasks": 24,
+        "connections": 8,
+        "rss_kib": 122228,
+        "pending": 70,
+        "backlog_age_seconds": 3.560535,
+        "database_lock_waiters": 0,
+        "active_requests": 8,
+        "background_ok": true
+      },
+      "recovery_seconds": 1.8145111779995204,
+      "durable": {
+        "receipts": 1191,
+        "effects": 2382,
+        "outbox": 1191,
+        "inbox": 1191,
+        "publication_retries": 0,
+        "pending_outbox": 0
+      },
+      "load_generator": {
+        "workers": 16,
+        "queue_capacity": 32,
+        "offered_rate": 20.0
+      }
+    }
+  ]
+}

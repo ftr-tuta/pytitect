@@ -1,0 +1,1 @@
+{"kind":"delta","payload":{"dataset_id":"d","generation":7,"integrity":{"algorithm":"sha-256","digest":"7eb17492bbaa6f3680e6167d0028774d13738121c1b5b5d8ea9593f7af119e88","item_count":1},"next_cursor":"next","tombstones":[],"upserts":[{"item_id":"a","revision":1,"value":{"n":1.0}}]},"protocol":"titect-sync/1"}

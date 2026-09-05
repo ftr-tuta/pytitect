@@ -1,0 +1,1315 @@
+= Large-Scale Architecture and Evolution Roadmap
+:toc: left
+:toclevels: 3
+:sectnums:
+:revdate: 2026-09-05
+:description: Evidence, target architecture, and an actionable reliability roadmap for Pytitect and Dartitect.
+:py-sha: dd8651b3e629f669d592802e99ac42173bf8781c
+:dart-sha: edb89eb78c72a3690016c05d9d889de444e3d2a0
+:py-src: https://github.com/ftr-tuta/pytitect/blob/dd8651b3e629f669d592802e99ac42173bf8781c
+:dart-src: https://github.com/ftr-tuta/dartitect/blob/edb89eb78c72a3690016c05d9d889de444e3d2a0
+
+The original audit and its reproduction below remain pinned to `{py-sha}` and the documentation
+commit `966fa9541352ef8d96e23c537ba8255a7fad2cd3`. Subsequent independent Python implementation and
+its validation are recorded in <<implementation-evidence>>. Historical findings and historical
+test counts do not describe the current runtime.
+
+[[decision]]
+== Decision and reading contract
+
+Pytitect and Dartitect already provide substantial reliability building blocks.
+The next investment should establish correctness under real concurrency and failure,
+then close overload and interoperability gaps before expanding the adapter catalog.
+Passing unit tests establishes a useful baseline; it does not establish a global service capacity.
+
+This document defines *one target architecture for large, robust applications*.
+FastAPI with SQLAlchemy/PostgreSQL is the primary service integration; NATS JetStream is the
+reference broker for reproducible integration work. Django is used where its administration,
+ORM, and synchronous transactional workflows provide a concrete benefit. Dartitect supplies
+the client composition, lifecycle, local persistence boundaries, and synchronization machinery.
+This is a reference composition chosen for this roadmap, not automatic SDK configuration or
+a claim that one framework wins every workload.
+
+The audience is SDK maintainers, service architects, client engineers, and operators of
+consumer applications. This delivery consists of an audit, a design, validation specifications,
+and linked issues. Proposed capabilities are not shipped APIs.
+
+The coverage target is complete disposition of the topics in <<ddia-coverage>> and
+<<capability-ledger>>: every row has evidence, an owner, and a next action or a justified
+boundary. It is not a claim to exhaust all architectural knowledge or guarantee support for
+a billion simultaneously active users. Registered users, connected clients, admitted work,
+operations per second, data volume, and infrastructure capacity are separate quantities.
+
+The conceptual index uses the first edition of Martin Kleppmann's
+https://www.oreilly.com/library/view/designing-data-intensive-applications/9781491903063/[Designing Data-Intensive Applications].
+The book's public contents establish topic coverage; its text is not reproduced here.
+Recommendations below are this audit's synthesis of repository evidence and primary technical
+references, not quotations or assertions that the book mandates this exact stack.
+
+=== Status vocabulary
+
+[cols="1,4",options="header"]
+|===
+|Status |Meaning
+|V: validated within scope |A named check passed for the stated implementation and environment.
+|E: implemented, evidence incomplete |Code exists; the production guarantee needs additional tests.
+|P: proposed |An enhancement or investigation with acceptance criteria and an issue.
+|O: application/infrastructure owned |The design must address it; the SDK does not own the policy or system.
+|N: intentionally excluded |A capability does not belong in this architecture or SDK; the reason is stated.
+|===
+
+An investigation is not a confirmed production incident. An emulator is not a cloud-service
+certification. A simulated restart is not a process crash with durable recovery.
+
+[[baseline]]
+== Audited baseline and evidence
+
+[cols="1,3",options="header"]
+|===
+|Repository |Audited source
+|Pytitect |`1.6.0rc1`, commit `{py-sha}`; dependency-free core, Stable 1.0 surface,
+Preview event-platform contracts/runtimes, Low-level optional adapters.
+|Dartitect |`1.1.0`, commit `{dart-sha}`; the published
+https://github.com/ftr-tuta/dartitect/releases/tag/v1.1.0/[v1.1.0 cohort].
+Its Native Strict and greenfield-only constraints remain applicable.
+|===
+
+The local checkouts matched the GitHub main commits when inspected on {revdate}.
+Findings use commit-pinned source links so later fixes do not rewrite the audit's meaning.
+The document and issue delivery are intentionally separate from the audited runtime commit.
+
+=== Checks and limits
+
+The initial local baseline passed 219 Python tests with the PostgreSQL-marked test deselected,
+strict typing in 84 source files, Ruff lint and formatting, existing documentation checks,
+the public API snapshot of 486 symbols, both protocol manifests, and the optional-import gate.
+The commands were:
+
+[source,console]
+----
+.venv/bin/python -m pytest -m 'not postgres' --no-cov -q
+.venv/bin/python -m mypy
+.venv/bin/python -m ruff check .
+.venv/bin/python -m ruff format --check .
+.venv/bin/python tool/docs_quality.py
+.venv/bin/python tool/api_snapshot.py
+.venv/bin/python tool/message_bundle.py
+.venv/bin/python tool/sync_bundle.py
+.venv/bin/python tool/optional_imports.py
+----
+
+These checks did not execute a production database, a live broker, a distributed load test,
+or the Dartitect platform test matrix. Dartitect evidence here is source/documentation inspection,
+including its existing tests and benchmarks, rather than a new certification of its platforms.
+The delivery verification record appears in <<delivery-validation>>.
+
+=== Confirmed validation gaps
+
+* {py-src}/tests/test_sqlalchemy_event_platform.py[SQLAlchemy tests] compile a bounded claim
+query and reject an invalid limit. They do not execute the SQLAlchemy stores against PostgreSQL.
+* {py-src}/tests/test_postgresql_leases.py[The PostgreSQL test] exercises handwritten SQL with
+two threads. It provides useful database evidence but does not exercise the packaged stores
+or establish process-crash recovery for the event platform.
+* {py-src}/.github/workflows/event-platform.yml[The expanded workflow] starts NATS and
+LocalStack, but its selected {py-src}/tests/test_nats_adapter.py[NATS tests] and
+{py-src}/tests/test_aws_adapter.py[AWS tests] use local fake clients.
+The NATS service also has no explicit JetStream enablement in this workflow.
+* {py-src}/.github/workflows/aws-canary.yml[The named real AWS canary] configures credentials
+but runs the same fake-client AWS tests. Its name does not establish real-service coverage.
+* {py-src}/tests/test_fault_injection.py[The crash matrix] checks predefined booleans and the
+fault injector itself. It does not interrupt the transaction/relay/broker path.
+* {py-src}/interop/dart/README.md[The Dart probe directory] contains a copied message fixture
+and instructions, not an executable Dart conformer. Searches in Dartitect's package sources and
+current Markdown guidance found no `titect-sync/1` or `titect-message/1` implementation.
+This is absence of evidence in the inspected scope, not a claim about private consumers.
+* {py-src}/src/pytitect/fastapi/idempotency.py[The FastAPI idempotency helper] parses a key;
+it does not coordinate durable HTTP execution. The SQLAlchemy bundle has optional idempotency
+and receipt model slots but no corresponding store implementations in its public exports.
+The {py-src}/examples/fastapi_event_platform/composition.py[FastAPI example] exposes readiness
+and OpenAPI helpers, not an end-to-end transactional write/receipt flow. See <<pyt-10>>.
+
+=== Reproduced runtime observations
+
+Deterministic local probes against the audited Pytitect source produced:
+
+[cols="1,3,2",options="header"]
+|===
+|Finding |Observation |Disposition
+|F01 |After a publisher advances the injected clock by five seconds, the relay's first retry
+is scheduled four seconds before the new current time. |Correct time accounting; <<pyt-03>>.
+|F02 |A consumer with a one-second reservation acknowledges after its handler advances the
+injected clock by two seconds. Completion receives the earlier reservation timestamp.
+|Correct completion-time validation; <<pyt-03>>.
+|F03 |`RetryPolicy(max_attempts=100).delay(60)` raises `OverflowError` before the configured
+maximum delay can cap the result. |Saturating retry arithmetic; <<pyt-05>>.
+|F04 |An unexpected handler `ValueError` returns `retried`; the broad exception branch
+does not expose an unexpected-failure outcome to the caller. |Explicit failure classification;
+<<pyt-07>>. This observation alone does not establish an infinite broker retry loop.
+|===
+
+F01 and F02 use a manually advanced application clock and process-local stores. They demonstrate
+the timestamps supplied by the runtime, not a real two-process stale-writer incident.
+F03 requires a consumer-configured attempt budget beyond the default ten attempts.
+See <<reproduction>> for a self-contained reproduction of F01--F03.
+
+=== Investigations requiring real concurrency
+
+{py-src}/src/pytitect/sqlalchemy/stores.py[SQLAlchemy stores] retain a caller-supplied session,
+while {py-src}/src/pytitect/aio/runtime.py[AsyncRelay] invokes settlement operations concurrently.
+The direct composition needs a supported short-transaction/session strategy; the presence of
+both public types does not establish that sharing one store session across tasks is safe.
+SQLAlchemy requires a separate session for concurrent tasks.
+https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html#using-asyncsession-with-concurrent-tasks[SQLAlchemy concurrency reference].
+
+The checkpoint store's missing-row path reads, then adds a row. Test simultaneous first writers
+against real constraints and report the precise loser outcome before classifying it as a bug.
+The relay creates one task per claimed message, bounded by the call's limit rather than by its
+concurrency setting. Measure task retention, lease waiting time, and concurrent `run_once` calls.
+These investigations belong to <<pyt-01>>, <<pyt-03>>, and <<pyt-04>>.
+
+[[ddia-coverage]]
+== DDIA coverage matrix
+
+The chapter index below follows the
+https://www.oreilly.com/library/view/designing-data-intensive-applications/9781491903063/[publisher's contents].
+The ownership and action columns are original dispositions for these repositories.
+
+[cols="1,2,2,3",options="header"]
+|===
+|Chapter |Focus |Status and owner |Roadmap disposition
+|1 |Reliability and scalability |E/P: both SDKs; O: operators |<<capacity>>, <<validation>>, <<pyt-09>>
+|2 |Data models |O: application |<<ownership>>; explicit model and query decisions
+|3 |Storage and retrieval |E: adapters; O: storage |<<persistence>>, <<pyt-01>>
+|4 |Encoding and evolution |E/P: both SDKs |<<interop>>, <<pyt-06>>, <<dart-01>>
+|5 |Replication |O: infrastructure |<<regions>>; lag and recovery evidence
+|6 |Partitioning |O: application/platform |<<cells>>, <<capacity>>; no SDK router
+|7 |Transactions |E/P: Pytitect |<<flows>>, <<pyt-01>>, <<pyt-04>>
+|8 |Partial failures and clocks |E/P: both SDKs |<<pyt-02>>, <<pyt-03>>, <<dart-03>>
+|9 |Consistency and consensus |E: fencing; O: authority |<<consistency>>; no SDK consensus service
+|10 |Batch computation |E: bounded rebuilds; O: analytics |<<derived>>, <<pyt-08>>
+|11 |Stream computation |E/P: messaging and sync |<<messaging>>, <<interop>>, <<dart-03>>
+|12 |Integrated data systems |E/P/O: shared boundaries |<<derived>>, <<operations>>, <<security>>
+|===
+
+The practical sections also cover caches, hot keys, privacy, disaster recovery, resource ownership,
+protocol compatibility, and operational cost. Topic coverage does not mean every topic requires
+a new library abstraction.
+
+[[ownership]]
+== Ownership and inclusion rules
+
+[cols="1,3,3",options="header"]
+|===
+|Boundary |SDK contribution |Application or infrastructure responsibility
+|Pytitect core |Typed outcomes, explicit clocks/limits, ports and finite reference stores
+|Business invariants, authorization, schema, transaction placement and external effects
+|Pytitect adapters |Explicit integration with caller-supplied framework/provider resources
+|Concrete models, migrations, routes, pool configuration, broker topology and process lifecycle
+|Dartitect |Native Strict constructor composition, ownership, cancellation, bounded work and sync ports
+|Feature policy, local write authority, generated databases, UI, credentials and conflict decisions
+|Cross-language contracts |Versioned neutral formats, bounded validation and executable conformance
+|Domain schemas, endpoint selection, authorization, routing and semantic mapping
+|Platform |No library-owned control plane |Deployment, cells, partition placement, consensus, backups and on-call operation
+|===
+
+Preserve dependency-free, side-effect-free `import pytitect`: no settings, environment lookup,
+database/network access, logging configuration, registry or optional-adapter import.
+Composition is explicit and instance-owned. Never introduce a singleton, ambient service locator,
+global runtime, protocol fallback, automatic adapter selection, or library-started worker.
+
+A new Dartitect capability must be neutral, difficult to implement correctly, and remove repeated
+infrastructure work. Apply the same test to Pytitect proposals. Consumer rules belong in the
+application; reusable non-neutral infrastructure belongs in a project-local extension.
+All in-memory references need finite retention and clear process-local, non-durable semantics.
+
+[[cells]]
+== One target architecture
+
+=== Components and isolation
+
+Use independent cells with their own serving capacity, transactional write authority, message
+processing capacity, and operational limits. A thin application-owned router maps a partition
+to its cell. The control plane administers placement and rollout; healthy data-plane operations
+must have a defined behavior when that control plane is unavailable.
+The isolation model draws on
+https://docs.aws.amazon.com/wellarchitected/latest/reducing-scope-of-impact-with-cell-based-architecture/what-is-a-cell-based-architecture.html[AWS's cell architecture guidance].
+
+[listing]
+----
+Dartitect client
+  local database + durable mutation outbox + session generation
+                    |
+          consumer-owned public API edge
+                    |
+           partition-to-cell router
+                    |
+     +--------------+-------------------------------------+
+     | Cell: independently bounded and operated           |
+     | FastAPI -> application transaction -> PostgreSQL   |
+     |                                  state + outbox    |
+     |                                        |           |
+     | relay -> NATS JetStream -> inbox + local effects    |
+     |                              |                     |
+     |                    projections / sync feed         |
+     | Optional Django service behind its own boundary    |
+     +----------------------------------------------------+
+                    |
+       explicit asynchronous cross-cell contracts
+                    |
+         other independently operated cells
+
+Control plane: placement, rollout, authority transfer, recovery
+Observability: bounded facts from each independently owned role
+----
+
+This is a logical diagram, not deployment code or a new runtime.
+The client reaches consumer APIs; server broker credentials and topology remain behind the
+service trust boundary. Repeating the same cell design is horizontal expansion of this one
+architecture, not a separate small/medium/large product.
+
+Application design requirements:
+
+* Place data that must change atomically within one authority boundary. Identify dependencies
+that cross it and give them explicit asynchronous completion and failure states.
+* Choose a partition key with a documented skew model. Separate a hot partition's scheduling
+budget from aggregate cell capacity; adding cells cannot split a single indivisible invariant.
+* Route using an explicit placement generation. A move must prevent the previous writer from
+accepting new authoritative work; preserve idempotency identity across routing changes.
+* Keep bulk transfer, analytics, replays and administrative jobs within separate resource budgets.
+Shared dependencies still need isolation; a shared database or broker can defeat cell isolation.
+* Roll out to one cell, evaluate correctness and SLOs, then continue. Define pause and rollback
+conditions before the rollout. Pin deployment artifacts and protocol compatibility evidence.
+
+=== FastAPI and selective Django integration
+
+The FastAPI reference root owns its lifespan, dependencies, sessions, publisher, routing and
+shutdown. Each request/processing unit borrows the resources it needs and closes only what it
+owns. Process replication multiplies memory and connection demand; aggregate those budgets
+when sizing a service. See
+https://fastapi.tiangolo.com/deployment/concepts/[FastAPI deployment concepts].
+
+Use one SQLAlchemy session per concurrent unit of work and short transactions around state
+changes. Claim a finite outbox batch durably, release its transaction, publish externally, and
+settle each authoritative claim in its own short transaction. This composition is a target for
+<<pyt-04>>, not an assertion that the current session-bound store supplies it automatically.
+
+Django is justified by a service's concrete workflow and ownership needs, including its
+administrative tooling and established synchronous ORM transaction path. Keep the whole atomic
+unit inside one synchronous function when bridging into async execution; size the bridge and
+database pool together. Django 6.1 documents that transactions do not yet work in async mode
+and recommends the synchronous bridge.
+https://docs.djangoproject.com/en/6.1/topics/async/#queries-the-orm[Django async transaction reference].
+
+Do not make Django mandatory for every microservice or select a framework from a presumed user
+count. The two integrations must preserve the same externally observable reliability contract.
+
+[[consistency]]
+=== Consistency and authority
+
+Define guarantees per operation. An authoritative write uses one partition's write authority;
+a projection or cache read advertises its freshness boundary. Read-your-writes should route to
+the authority or wait for a bounded, explicitly identified projection checkpoint. A timeout
+must not silently downgrade a promised consistency level.
+
+Local invariants may require atomic updates, uniqueness constraints, locks, version checks or
+serializable transactions. PostgreSQL's default Read Committed isolation does not establish
+every multi-row invariant. When serialization retries are required, retry the complete local
+transaction within the operation's budget, with external effects deferred to the outbox.
+https://www.postgresql.org/docs/18/transaction-iso.html[PostgreSQL isolation reference].
+
+Treat partitions and process pauses as normal failure inputs. Expiring ownership is not enough
+to protect a resource: the protected write must atomically compare authority under the same
+transaction/lock. A stale owner must lose even after a long pause. This requirement is consistent
+with https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html[Kleppmann's fencing analysis].
+
+Consensus, leader election and membership belong to the selected infrastructure. No Pytitect or
+Dartitect object can create global linearizability, a cross-database atomic commit, or a trusted
+global clock. State the availability consequence when a required write authority cannot be
+established. Multi-writer conflict resolution and CRDT semantics remain application-selected;
+they are not universal defaults for offline synchronization.
+
+[[flows]]
+== End-to-end flow contracts
+
+=== Write, publish and consume
+
+[listing]
+----
+Client        API / producer DB         Relay / broker        Consumer DB
+  | request         |                        |                    |
+  |---------------> |                        |                    |
+  |          begin local transaction         |                    |
+  |          validate authority              |                    |
+  |          apply state + append outbox     |                    |
+  |          commit                          |                    |
+  |<-- local result / durable acceptance     |                    |
+  |                 |<-- claim + commit -----|                    |
+  |                 |                  publish + confirmation     |
+  |                 |<-- settle claim -------|                    |
+  |                 |                        |---- delivery ----->|
+  |                 |                        |        reserve inbox
+  |                 |                        |        state + outbox
+  |                 |                        |        complete inbox
+  |                 |                        |        commit
+  |                 |                        |<------- ACK --------|
+----
+
+The API response describes the local commit or acceptance only. A downstream workflow's final
+result requires its own durable receipt/status. A lost response is an uncertain outcome:
+reconcile using the original idempotency identity before issuing a new logical operation.
+
+Idempotency identity includes a consumer-defined namespace and operation scope. Reject a
+reused identity with a conflicting request fingerprint according to the existing coordinator
+contract. Retain accepted/uncertain records across the complete retry and reconciliation window.
+Broker deduplication is an optimization; it does not replace the receiving inbox.
+
+An external system that neither accepts an idempotency identity nor offers reconciliation
+cannot be made exactly once by a local outbox. Record uncertainty and require the application's
+compensation or reconciliation decision. Do not retry that uncertainty blindly.
+
+=== Query and derived-state visibility
+
+Queries select authoritative or explicitly stale-tolerant reads at composition. Bound query
+time, returned rows, object hydration, response bytes and any fan-out. A request timeout includes
+queue and pool wait. Paginate using a stable ordering and a documented snapshot/continuation
+contract; an offset or cursor alone does not prove consistency under concurrent writes.
+
+Caches and materialized views are derived state. Choose freshness, invalidation, stampede
+control, negative-cache retention and deletion propagation in the application. A cache outage
+must not unleash an unlimited fallback load on the database. Cache keys and authorization
+scope must agree; cache behavior must not substitute for an authorization decision.
+
+=== Client mutation, delta and restart
+
+[listing]
+----
+Local transaction: application state + durable mutation identity + outbox
+  -> bounded delivery attempt using the same identity
+  -> server local transaction + receipt
+  -> client reconciliation of confirmed / rejected / uncertain result
+
+Confirmed local checkpoint
+  -> bounded delta request
+  -> validate version, limits and active session generation
+  -> local transaction: apply page and compare required fencing authority
+  -> persist checkpoint only after the corresponding local state is durable
+  -> request the next page
+
+Restart
+  -> recover durable operations and confirmed coverage
+  -> reconcile uncertain outcomes
+  -> resume bounded work; never trust an in-memory receipt as durability
+----
+
+If the data and checkpoint use separate commits, a crash may replay a page; the page application
+must tolerate it. A checkpoint must never advance beyond durable coverage. If the contract
+requires atomic data-plus-checkpoint commit, supply one consumer transaction supporting both;
+the SDK cannot synthesize that guarantee across stores.
+
+An expired cursor or a removed retention window triggers an explicit bounded bootstrap path.
+Preserve unresolved local mutations through resynchronization. Late responses from an obsolete
+session generation cannot publish into the replacement session. Conflict classification,
+merging, user-visible reconciliation and deletion semantics remain application-owned.
+
+[[persistence]]
+== Persistence, retention and recovery
+
+Production store conformance needs real transactions and simultaneous independent connections.
+Test empty and populated state, first-writer races, duplicate inserts, compare-and-set losers,
+expired claims, rollbacks, deadlocks, cancellation, and process interruption. Verify the state
+from a fresh connection after each event, not only from a cached ORM object.
+
+Application storage requirements:
+
+* Design indexes against actual claim, deduplication, checkpoint and retention queries.
+Measure query plans, locks, rows scanned, table/index growth and maintenance interference.
+`SKIP LOCKED` supports competing claimers; it does not create application event ordering.
+* Bound each transaction's statements, rows, payload and duration. Configure statement, lock
+and pool timeouts explicitly. Keep network publication outside database transactions.
+* Allocate connection budgets across API replicas, relays, consumers, maintenance and admin
+access. Autoscaling a process count without a connection budget can overload PostgreSQL.
+* Define separate retention windows for inbox completion, idempotency results, uncertain
+receipts, replay, quarantine, tombstones and event history. A single TTL is insufficient.
+* Cover outages, client offline intervals, delayed broker redelivery, deployment rollback and
+operator replay when deriving retention. If retained history is insufficient, reject the old
+continuation explicitly and use a supported recovery path.
+* Run maintenance in bounded batches with an explicit cutoff, dry-run evidence, checkpoints,
+and a rate budget. Preserve any authority token whose reuse could admit a stale writer.
+
+Backups must include the state required to reconcile previously acknowledged work. PostgreSQL
+PITR depends on a usable base backup and the required WAL sequence; restoring must be practiced,
+including outbox/inbox/checkpoint relationships.
+https://www.postgresql.org/docs/18/continuous-archiving.html[PostgreSQL PITR reference].
+Encrypt and restrict backups through consumer infrastructure and verify key availability during
+restore. Define what survives a regional loss and which accepted operations may require
+reconciliation after restoration. A replica alone is not a tested backup strategy.
+
+[[regions]]
+== Regional operation and partition movement
+
+The reference design has one active write authority per partition, with explicitly managed
+replication and takeover. Independent partitions may be active in different regions. This does
+not imply unrestricted writes to the same partition in every region.
+
+Synchronous and asynchronous replication trade acknowledgment latency, availability and potential
+data loss differently. Record the configured durability boundary and replication lag, and test
+promotion under that actual configuration.
+https://www.postgresql.org/docs/18/warm-standby.html[PostgreSQL replication reference].
+
+The application/platform must produce a failover runbook that:
+
+. Identifies the last accepted authority generation and prevents the former writer from
+committing after the replacement becomes authoritative.
+. Determines durable coverage, replica lag and the permitted recovery point before promotion.
+. Reconciles outbox publication, inbox completion, receipts and checkpoints at the new authority.
+. Updates routing without changing logical operation IDs; bounds redirected and retried traffic.
+. Confirms freshness guarantees and restores traffic progressively under a capacity budget.
+. Records recovery time and any lost, duplicated or unresolved work before allowing failback.
+
+Move partitions using a versioned placement procedure with verification and an explicit cutover.
+Retain the source until the target's state and continuation coverage are verified. Schema evolution
+and data movement are consumer operations; this repository ships no partition router or migration.
+Distributed transactions across cells and global event ordering are excluded defaults because
+they couple failure and latency across otherwise independent authorities.
+
+[[messaging]]
+== Messaging and overload
+
+=== Broker semantics and bounded delivery
+
+NATS JetStream is the reference integration, with explicit durable consumption, pull demand,
+acknowledgment deadlines, retention and redelivery configuration owned by the application.
+Bound prefetch against handler capacity and time spent waiting before processing; the broker's
+acknowledgment timer and the local reservation timer are different authorities.
+https://docs.nats.io/learn/jetstream/pull-consumers[NATS consumer reference].
+
+AWS EventBridge/SQS remains an explicit alternative adapter with its own capability evidence.
+SQS Standard can redeliver messages and requires idempotent processing.
+https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/standard-queues-at-least-once-delivery.html[SQS delivery reference].
+Do not infer ordering parity from sharing an envelope. The audited Pytitect release rejects
+ordered profiles and does not implement Kafka or RabbitMQ. Additional transports require a
+demonstrated workload need and the same real failure suite before they enter the roadmap.
+
+For application ordering, define the key, sequence authority, gap policy, replay boundary and
+maximum buffered disorder. Concurrent publishing and retries can reorder completion even when
+rows were claimed in order. No timestamp, UUID or global in-memory counter supplies a distributed
+total order. Event identity, correlation, causation and partition identity serve different roles.
+
+=== Coordinated overload policy
+
+The target contract bounds admitted work, queued work, in-flight bytes, active keys, pool wait,
+retry work and recovery work. Saturation returns a typed outcome that the consumer can map to
+its public protocol. Rate limits are local unless backed by an explicit distributed authority;
+never describe a per-process bucket as a fleet-wide quota.
+
+Clients and servers need a shared strategy for overload because repeated rejected traffic still
+consumes resources. This principle is supported by
+https://sre.google/sre-book/handling-overload/[Google SRE's overload guidance].
+The SDK work proposed here is explicit policy and ports; request classification and fair-share
+allocation remain consumer decisions.
+
+Specify one end-to-end deadline and a retry owner for each operation. Count time spent in
+admission, pools, calls, retry delays and cleanup. Use a monotonic elapsed clock locally and
+separate it from UTC timestamps used in persisted records. Cross-host deadline metadata needs
+an explicit trust boundary, maximum budget and clock-skew treatment.
+
+Use saturating backoff arithmetic, injected randomness and a finite attempt/elapsed budget.
+The reference composition opts into full jitter; preserve existing public constructor behavior
+unless a reviewed compatibility change says otherwise. A retry cannot outlive the operation's
+deadline or turn a typed uncertain outcome into another execution.
+
+Coordinate HTTP feedback with the client's retry policy. `Retry-After` can encode a date or a
+delay; parsing it does not authorize a retry of a non-idempotent operation.
+https://www.rfc-editor.org/rfc/rfc9110.html#section-10.2.3[HTTP Retry-After semantics].
+An excessive delay should yield a deferred/stopped result rather than retrying earlier than a
+valid server minimum. Invalid hints require an explicit policy, never hidden fallback.
+
+Use bulkheads for independent dependencies and work classes, single-flight for eligible
+duplicate reads, and breakers whose scope and recovery probes are bounded. Do not coalesce
+distinct mutations or authorization scopes. Reconnect, token refresh, background sync and
+periodic maintenance must not synchronize into an unbounded fleet-wide retry wave.
+
+[[interop]]
+== Python--Dart contracts and client evolution
+
+Pytitect already publishes `titect-sync/1` and `titect-message/1` bundles; independent versioning
+and hashes are useful foundations. Dartitect already has mutation, sync, resilience and lifecycle
+primitives. The missing evidence is their compatibility across a real public boundary.
+See {py-src}/docs/event-platform-interoperability.md[message interoperability] and
+{dart-src}/packages/dartitect_sync/README.md[Dartitect sync].
+
+The executable conformance target is:
+
+* Verify both repositories against an immutable bundle identity and every declared fixture hash.
+Decode positive fixtures, reject negative fixtures, and compare canonical bytes where required.
+* Exercise numeric boundaries, Unicode and escaping, duplicate/unknown members, UTC precision,
+nesting, collection counts, metadata and encoded byte limits. Test Dart VM and web where declared.
+* Apply allocation limits at the parsing boundary; post-allocation validation alone is not a
+memory bound. Document which checks the transport, decoder and model validator each enforce.
+* Preserve existing `/1` semantics. New mandatory fields or incompatible acceptance rules
+require an explicit compatibility/version decision and a rolling-upgrade test matrix.
+* Keep server cursors opaque on the client; transport does not imply possession of server
+signing/encryption keys. Translate neutral outcomes without inventing domain conflict policy.
+
+Canonicalization must follow the declared profile rather than assuming that sorted JSON in
+two runtimes produces identical bytes for all numbers and strings.
+https://www.rfc-editor.org/rfc/rfc8785.html[RFC 8785 reference].
+The audit does not assert that every existing message encoder is RFC 8785; prove the exact
+bundle's numeric and serialization contract before adopting that label.
+
+Rollout tests must cover old-client/new-server and new-client/old-server combinations permitted
+by the support policy, deliberate rejection of incompatible versions, expired cursors,
+partially committed batches and interrupted bootstrap. Keep fixtures neutral and public.
+
+On clients, bound stored pending mutations, bootstrap pages, retained family entries, progress
+history, simultaneous dataset work and telemetry queues. Reuse existing Dartitect incremental
+and resilience primitives instead of creating a competing runtime. Handle disk exhaustion and
+platform background limits as explicit failures. A process-local sync lease does not coordinate
+multiple tabs, processes or devices without a storage authority that actually spans them.
+
+[[derived]]
+== Derived data, batch processing and workflow recovery
+
+Transactional state is the reference write authority. Projections, caches, search and analytics
+derive from it using explicit, recoverable propagation. Separate operational queries from large
+analytical scans and exports. Application-selected CDC may reduce polling costs, but it needs
+its own capture-position, retention and restart evidence; it does not remove inbox semantics.
+
+Projection rebuilds need a fixed target coverage, bounded pages, versioned reducers, durable
+progress and a verified cutover to the replacement view. Do not mix checkpoints across partitions
+or imply a global position beyond the selected event store. Reprocessing needs deterministic
+inputs and explicit handling of changed code, deleted records and authorization-relevant data.
+
+For stream-derived state, define event time versus processing time, late arrivals, duplicates,
+gap detection, watermarks, bounded joins and correction policy only where the application uses
+them. Pytitect's current event/projection contracts are not a general stream-processing engine.
+Batch engines, analytical warehouses and indexing backends remain external systems.
+
+Event sourcing is optional for a domain that requires an authoritative event history. It is not
+a mandatory rewrite of CRUD services. Process managers and compensations are explicit decisions;
+compensation is not automatic rollback of an external effect. Durable timers/jobs require the
+same claim, fencing, retry and retention evidence as message processing. Extend conformance
+before treating additional model slots as implemented durable stores: <<pyt-08>>.
+
+[[operations]]
+== Operations, observability and safe rollout
+
+Record correctness alongside performance: accepted operations recovered, duplicate local effects,
+stale writes rejected, checkpoint coverage, unresolved receipts, oldest pending work and rebuild
+progress. Separate API, relay, consumer, timer and projection readiness; a broker outage should
+affect an API only according to its selected durability/backlog policy.
+
+Define SLIs and SLOs around user-visible success, latency, durability and freshness. Keep the
+measurement boundary and denominator explicit, including rejected and timed-out work. Tail latency
+and freshness distributions are more informative than averages alone.
+https://sre.google/sre-book/service-level-objectives/[Google SRE SLO reference].
+
+The proposed runtime instrumentation emits fixed event names and allowlisted attributes through
+injected sinks. Bound both attribute count and possible label values. A map with 32 arbitrary
+values is not a cardinality guarantee. Test that sink failures cannot change commit, ACK or
+cancellation behavior. Exporters, sampling, alert destinations and dashboards remain consumer-owned.
+
+Trace Context is transport metadata, not authorization or message identity. Validate it at the
+boundary and propagate only the declared context; keep broker envelopes stable.
+https://www.w3.org/TR/trace-context/[W3C Trace Context reference].
+Logs and traces must not contain raw bodies, credentials, cookies, tokens, idempotency keys,
+DSNs, private paths or identifiers smuggled into unrestricted labels.
+
+Operational acceptance requires runbooks for backlog growth, poison deliveries, exhausted retry
+budgets, missing history, authority transfer, restore and a failed rollout. Stop admission before
+draining; bound the grace period; cancel cooperatively; release resources in dependency order.
+Cancellation is not proof that a remote operation failed or that a database commit rolled back.
+After ambiguous completion, inspect durable state before replaying work.
+
+[[security]]
+== Trust, privacy and tenant isolation
+
+Security policy is consumer-owned, but boundaries must make correct integration possible.
+Authenticate and authorize every public operation and continuation in its current session;
+an opaque identifier or validated protocol proof is not authorization. Keep scope binding
+consistent across idempotency, caches, inboxes, cursors and storage access.
+
+Apply request, decoded-body and decompression limits before expensive work. Separate untrusted
+client claims from trusted server policy for deadlines, quotas and routing. Require explicit
+key resolution and rotation procedures, bounded replay windows, audience/context validation and
+revocation behavior. Exercise obsolete-session responses and replay after key rotation in the
+paired tests without embedding secrets in fixtures.
+
+Deletion and retention must reach caches, projections, offline replicas, exports and backups
+according to the application's policy. Protect quarantine access and use digest/minimal metadata
+by default. Payload retention needs an explicit finite policy. Security vulnerabilities belong
+in the repositories' private reporting process; public issues contain neutral reliability and
+enhancement evidence only.
+
+[[capacity]]
+== Capacity model and performance evidence
+
+There is no measured fleet-capacity result in this audit. Use one declared workload for the
+reference architecture, then vary its parameters for sensitivity and failure testing. Those
+variations are experiments on the same design, not separate architecture tiers.
+
+[cols="1,3,2",options="header"]
+|===
+|Input |Required definition |Measurement boundary
+|Population and activity |Registered, connected, active and concurrently executing clients |Client and edge
+|Operation mix |Read/write/sync/replay frequencies, fan-out and payload distributions |Public operation through terminal result
+|Skew |Partition popularity, hot-key concentration and tenant imbalance |Partition and cell
+|Resources |CPU, RAM, storage IOPS, network, pool size, broker retention and topology |Process, cell and shared dependencies
+|Service objectives |Latency percentiles, availability, durability, freshness, RPO and RTO |Named operation and observation window
+|Failure allowance |Dependency slowdown, cell loss, reconnect surge and recovery headroom |Same workload during and after faults
+|===
+
+Use dimensionally explicit calculations:
+
+[listing]
+----
+offered operations/s = active clients * operations/client/s
+dependency calls/s = offered operations/s * calls/operation * attempt amplification
+mean in-flight work = measured throughput/s * mean residence time in seconds
+payload bandwidth bytes/s = delivered messages/s * mean encoded bytes/message
+backlog drain seconds ~= queued messages / (service rate - admitted arrival rate)
+retained bytes ~= arrival rate * retention seconds * mean stored bytes
+----
+
+These are planning relationships, not benchmark results. The in-flight relationship assumes a
+stable measurement boundary; the drain estimate requires service rate greater than arrival rate.
+Storage estimates additionally need index, WAL, replica and metadata overhead. A partition's
+capacity can dominate long before aggregate CPU is exhausted. Avoid linear extrapolation from
+one process to a worldwide fleet without measuring shared bottlenecks and failure headroom.
+
+The benchmark specification in <<pyt-09>> must record commit, wheel/bundle hashes, dependency
+versions, topology, machine limits, dataset generator/seed, warmup, duration and offered load.
+Use open arrival scheduling or account for coordinated omission so a slower server does not
+silently reduce the load being measured. Report failed/timed-out work, not just successful
+latency. Establish the load generator's own headroom before trusting saturation results.
+
+Measure p50/p95/p99 latency, throughput, CPU, RSS, event-loop lag, retained tasks, pool wait,
+database locks, oldest backlog age, duplicate suppression, retry amplification and recovery time.
+For Dartitect include retained bytes, first useful page, cancellation-to-quiescence and session
+replacement behavior. Run sustained load and overload/recovery, not only microbenchmarks.
+Track cost per useful committed operation including replication, egress and operational storage.
+
+[[capability-ledger]]
+== Capability and responsibility ledger
+
+[cols="2,1,3,2",options="header"]
+|===
+|Capability |Status |Evidence or boundary |Action
+|Dependency-free imports and API classifications |V |Named local import/snapshot checks |Preserve in every issue
+|Idempotency, inbox/outbox, leases and checkpoints |E |Existing implementations and local tests |<<pyt-01>>, <<pyt-03>>
+|Async queues, relay and shutdown |E/P |Existing runtime; F01/F02/F04 and task inspection |<<pyt-03>>, <<pyt-04>>, <<pyt-07>>
+|FastAPI and SQLAlchemy integration |E/P |Helpers and session-bound stores; limited DB evidence |<<pyt-01>>, <<pyt-04>>
+|Durable HTTP idempotency and receipts in the primary stack |P |Header parsing and model slots do not coordinate execution |<<pyt-10>>
+|Django integration |E |Explicit sync transaction bridge and reference projects |<<pyt-01>>
+|NATS and AWS adapters |E |Fake-client tests in named broker jobs |<<pyt-02>>
+|Retry jitter, bulkheads, breakers and single-flight |E/P |Dartitect has primitives; Python has bounded backoff |<<pyt-05>>, <<dart-02>>
+|Protocol bundles |V/E |Python manifests pass; no paired executable proof |<<pyt-06>>, <<dart-01>>
+|Offline mutation, sync and session ownership |E |Existing Dartitect ports and harnesses |<<dart-03>>
+|Jobs, processes, event sourcing and projections |E |Preview contracts and reference state machines |<<pyt-08>>
+|Observations and readiness |E/P |Public ports exist; runtime-wide evidence incomplete |<<pyt-07>>
+|Capacity under distributed failure |P |No measured fleet envelope in this audit |<<pyt-09>>, <<dart-03>>
+|Sharding, replication, regional failover and consensus |O |Infrastructure and application authority |<<cells>>, <<regions>>
+|Caches, indexes, CDC, search and analytical stores |O |Application-selected derived-data systems |<<persistence>>, <<derived>>
+|Schema evolution, security policy, conflict resolution |O |Consumer invariants and trust boundaries |<<interop>>, <<security>>
+|Global runtime, automatic binding, universal exactly once |N |Violates ownership or exceeds end-to-end guarantees |Do not introduce
+|Mandatory Kafka, CRDTs, event sourcing or distributed SQL |N |No demonstrated universal requirement |Revisit only for a measured unmet need
+|===
+
+[[roadmap]]
+== Prioritized issue specifications
+
+Priority expresses dependency and correctness risk, not application-size tiers.
+P0 closes misleading evidence or correctness hazards; P1 adds coordinated resilience and
+interop proof; P2 extends durability and operational acceptance on that foundation.
+Each item remains proposed until its own PR and acceptance evidence are complete.
+
+Tracking issue: https://github.com/ftr-tuta/pytitect/issues/34[pytitect#34].
+The backlog contains ten Pytitect items and three Dartitect items; this tracker coordinates their dependencies.
+
+[[pyt-01]]
+=== PYT-01: Real PostgreSQL adapter and transaction conformance
+
+*Owner:* Pytitect. *Priority:* P0. *Dependencies:* none. *Issue:* https://github.com/ftr-tuta/pytitect/issues/35[pytitect#35].
+
+*Evidence:* {py-src}/tests/test_sqlalchemy_event_platform.py[SQLAlchemy tests] and
+{py-src}/tests/test_postgresql_leases.py[PostgreSQL test] leave packaged-store concurrency
+and crash recovery unproven.
+
+*Change:* exercise SQLAlchemy and applicable Django stores through public entrypoints with
+consumer-owned synthetic models, independent connections and actual transactions. Add
+subprocess crash/restart coverage at commit boundaries. Keep fast policy tests separate.
+
+*Acceptance:* concurrent inbox begin, outbox claim/takeover/settlement, rollback, duplicate
+suppression, checkpoint initialization/update and stale authority have durable assertions from
+a fresh connection. Atomic state/inbox/outbox changes either all commit or all roll back.
+Missing infrastructure must fail a selected integration job rather than silently skip it.
+Required CI executes a representative version; expanded versions run on adapter changes.
+
+*Compatibility:* no application schema or transaction ownership enters the SDK. Reproduced
+defects receive focused fixes with their own regression evidence.
+
+[[pyt-02]]
+=== PYT-02: Make broker and crash canaries exercise real transports
+
+*Owner:* Pytitect. *Priority:* P0. *Dependencies:* PYT-01 for combined durability tests.
+*Issue:* https://github.com/ftr-tuta/pytitect/issues/36[pytitect#36].
+
+*Evidence:* {py-src}/.github/workflows/event-platform.yml[Expanded jobs],
+{py-src}/.github/workflows/aws-canary.yml[AWS canary] and
+{py-src}/tests/test_fault_injection.py[crash assertions] do not execute their named end-to-end failures.
+
+*Change:* connect real NATS clients to explicitly enabled JetStream and AWS SDK clients to
+LocalStack. Exercise publication, reception and settlement. Keep real AWS optional and
+credential-gated, but make that job call real services if it runs. Use isolated synthetic
+resources with bounded teardown. Distinguish emulator and real-provider evidence.
+
+*Acceptance:* dropped broker connectivity fails the live test; publish-confirm/crash/settle
+and commit/crash/ACK redeliveries preserve durable invariants. Quarantine failure cannot cause
+terminal acknowledgment. A fake-only job cannot satisfy the integration gate. Real AWS results
+record their environment and do not masquerade as a required offline check.
+
+*Compatibility:* adapter selection and topology application remain explicit. CI provisions only
+test resources; this roadmap does not provision cloud infrastructure.
+
+[[pyt-03]]
+=== PYT-03: Correct runtime time accounting and expired authority checks
+
+*Owner:* Pytitect. *Priority:* P0. *Dependencies:* PYT-01 for durable acceptance.
+*Issue:* https://github.com/ftr-tuta/pytitect/issues/37[pytitect#37].
+
+*Evidence:* F01/F02 in <<reproduction>> and
+{py-src}/src/pytitect/aio/runtime.py[the single initial clock sample].
+
+*Change:* sample current time at the transition being validated, calculate retry availability
+from the failure/settlement boundary, and define the authoritative behavior of queued/expired
+claims. Separate elapsed deadlines from UTC persistence timestamps. Do not silently renew a lease.
+
+*Acceptance:* the five-second synthetic failure schedules its first retry one second after
+failure, never four seconds in the past. A reservation whose TTL elapsed is not completed using
+its start time. Competing takeover rejects the old claim; clock jumps, queue waits, cancellation
+and supported renewal paths have deterministic and real-store tests.
+
+*Compatibility:* preserve existing public signatures where feasible; document any strengthened
+expiry behavior and version explicitly if a stable contract must change.
+
+[[pyt-04]]
+=== PYT-04: Support safe concurrent relay transactions and bounded admission
+
+*Owner:* Pytitect. *Priority:* P0. *Dependencies:* PYT-01, PYT-03.
+*Issue:* https://github.com/ftr-tuta/pytitect/issues/38[pytitect#38].
+
+*Evidence:* {py-src}/src/pytitect/sqlalchemy/stores.py[session-bound stores] and
+{py-src}/src/pytitect/aio/runtime.py[concurrent relay settlement and per-claim task creation].
+
+*Change:* provide an explicit factory/adapter composition for short independent claim and
+settlement transactions, borrowing consumer resources. Bound admitted claims, queued tasks,
+active publications and retained payload bytes. Specify behavior for simultaneous relay calls.
+This is an integration investigation; no production shared-session incident was reproduced.
+
+*Acceptance:* two relay instances with distinct sessions cannot share an authoritative claim;
+publication occurs outside a database transaction; concurrent settlements never share one
+AsyncSession. Under a large backlog, task and payload retention stay within the configured
+admission contract. Shutdown and cancellation leave work recoverable.
+
+*Compatibility:* new factory/limit surfaces start in the appropriate Preview/Low-level scope;
+existing stores retain caller ownership. No global session factory or worker is introduced.
+
+[[pyt-05]]
+=== PYT-05: Add safe retry arithmetic and explicit resilience budgets
+
+*Owner:* Pytitect. *Priority:* P1, with F03 arithmetic fix suitable for an earlier focused PR.
+*Dependencies:* PYT-03 for shared time semantics. *Issue:* https://github.com/ftr-tuta/pytitect/issues/39[pytitect#39].
+
+*Evidence:* F03; {py-src}/src/pytitect/outbox.py[RetryPolicy] has a cap and attempt budget but
+calculates the unbounded exponential before the cap; no injected jitter or aggregate retry budget.
+
+*Change:* saturate arithmetic before overflow and define optional injected jitter, elapsed/deadline
+budget and admission outcomes. Compose per-operation retries with an explicit instance-owned
+retry budget; classify retryable, permanent and uncertain outcomes separately.
+
+*Acceptance:* large valid attempts always return a capped delay; invalid/non-finite policy values
+are rejected. Seeded jitter stays within bounds, aggregate retry allowance is enforced, waiting
+counts against deadlines, and cancellation/uncertainty stops automatic retry. No nested layer
+silently multiplies attempts. Test local versus distributed budget semantics explicitly.
+
+*Compatibility:* preserve Stable RetryPolicy defaults; expose additional neutral behavior
+explicitly. Consumer mappings choose HTTP responses and classification.
+
+[[pyt-06]]
+=== PYT-06: Publish executable paired protocol conformance evidence
+
+*Owner:* Pytitect. *Priority:* P1. *Dependencies:* DART-01 for paired execution.
+*Issue:* https://github.com/ftr-tuta/pytitect/issues/40[pytitect#40].
+
+*Evidence:* {py-src}/interop/dart/README.md[The current probe] is a fixture and instructions.
+
+*Change:* pin the source of truth and extend shared neutral positive/negative vectors for sync
+and message profiles. Run the Python verifier and a real Dart consumer against the same bundle;
+record compatible package and protocol versions separately.
+
+*Acceptance:* canonical round trips, hashes, limits and rejection outcomes agree where the
+profile requires them. Numeric/Unicode boundary vectors run on declared Dart targets. Deliberate
+wire drift fails CI. Rolling compatibility and unsupported-version rejection are exercised.
+
+*Compatibility:* preserve `/1`; do not label a newly restricted acceptance rule compatible
+without reviewing both implementations. No domain mapping or endpoint binding is generated here.
+
+[[pyt-07]]
+=== PYT-07: Expose runtime failure outcomes and bounded operational hooks
+
+*Owner:* Pytitect. *Priority:* P1. *Dependencies:* PYT-03, PYT-05.
+*Issue:* https://github.com/ftr-tuta/pytitect/issues/41[pytitect#41].
+
+*Evidence:* F04 and {py-src}/src/pytitect/aio/runtime.py[consumer exception handling];
+{py-src}/src/pytitect/operations.py[operational ports] exist separately from runtime transitions.
+
+*Change:* preserve visibility of unexpected failures and inject policy for retry/terminal
+classification without treating cancellation as an ordinary failure. Emit fixed, bounded facts
+for admission, transaction outcomes, settlement, lag and shutdown through optional sinks.
+
+*Acceptance:* unexpected errors remain visible to the supervisor/caller under a documented
+contract; expected failures follow bounded policy. Sink failures never change state or ACKs.
+Attributes have an allowlist and finite cardinality, no payloads or credentials. Readiness uses
+role-selected dependencies and backlog policy. Test cancellation and failed quarantine explicitly.
+
+*Compatibility:* no logging setup, exporter, global tracing state or automatic exception handler.
+Any change to Preview error propagation includes adoption guidance.
+
+[[pyt-08]]
+=== PYT-08: Establish durable workflow and projection recovery conformance
+
+*Owner:* Pytitect. *Priority:* P2. *Dependencies:* PYT-01, PYT-03, PYT-04.
+*Issue:* https://github.com/ftr-tuta/pytitect/issues/42[pytitect#42].
+
+*Evidence:* {py-src}/docs/event-platform.md[Preview workflow guarantees] and
+{py-src}/src/pytitect/projections.py[reference projection/rebuild state] need durable adapter evidence.
+
+*Change:* inventory implemented stores separately from model slots, then add neutral conformance
+for process decisions, timers/jobs, expected-version event appends, snapshots and projection
+rebuilds. Durable bindings remain caller-provided. Add reusable adapter support only for a
+demonstrated missing boundary, rather than implementing a full workflow engine.
+
+*Acceptance:* restart resumes from durable coverage; stale versions/fences lose; a process
+decision's state, inbox, outbox and timers are atomic. A bounded rebuild matches the authoritative
+stream at a fixed watermark and cuts over without checkpoint regression. Retention and interrupted
+maintenance cannot erase unresolved work or reuse authority tokens.
+
+*Compatibility:* event sourcing remains optional; no application reducers, compensations,
+schedules, migrations or repositories are owned by Pytitect.
+
+[[pyt-09]]
+=== PYT-09: Add reproducible capacity and failure-recovery evidence
+
+*Owner:* Pytitect. *Priority:* P2. *Dependencies:* PYT-01--PYT-07, PYT-10, DART-03 for paired scenarios.
+*Issue:* https://github.com/ftr-tuta/pytitect/issues/43[pytitect#43].
+
+*Evidence:* the audit established local functional evidence, not a measured distributed
+capacity envelope; <<capacity>> defines the missing measurement contract.
+
+*Change:* create a consumer-owned synthetic FastAPI/SQLAlchemy/PostgreSQL/NATS fixture and
+repeatable offered-load, saturation, recovery and soak scenarios. Cover Django's supported
+transaction bridge through equivalent correctness checks. Record fixed artifacts, environment,
+load generation, resource budgets and error-inclusive results.
+
+*Acceptance:* reports include tail latency, backlog age, memory/tasks, database waits, useful
+throughput, retries and recovery. Forced dependency slowdown, process death and reconnect surge
+preserve correctness and resource bounds. Regression thresholds come from reviewed repeatable
+baselines, not an invented users-per-SDK promise. Expensive suites have an explicit CI schedule
+and a required representative gate for changes to the affected boundaries.
+
+*Compatibility:* the fixture does not become a packaged server, schema, deployment platform or
+automatic consumer binding. Infrastructure costs and provider configuration are explicit.
+
+[[pyt-10]]
+=== PYT-10: Provide explicit async HTTP idempotency and receipt composition
+
+*Owner:* Pytitect. *Priority:* P0. *Dependencies:* PYT-01, PYT-03.
+*Issue:* https://github.com/ftr-tuta/pytitect/issues/44[pytitect#44].
+
+*Evidence:* {py-src}/src/pytitect/fastapi/idempotency.py[the header parser],
+{py-src}/src/pytitect/sqlalchemy/__init__.py[the public store inventory] and
+{py-src}/examples/fastapi_event_platform/composition.py[the helper-only example] do not
+provide a durable async HTTP request-to-receipt composition for the primary reference stack.
+
+*Change:* extend the existing neutral idempotency/receipt semantics through explicit async
+ports and caller-owned SQLAlchemy transaction bindings where missing. Document a synthetic
+FastAPI flow that atomically coordinates accepted local effects and outbox work, persists the
+required result/uncertainty state, and permits reconciliation after response loss.
+
+*Acceptance:* concurrent same-key requests produce one accepted local operation; conflicting
+fingerprints and scopes remain distinct typed outcomes. Crash before commit leaves no accepted
+operation; commit followed by response loss is reconciled using the same identity. Expired
+execution authority, result retention and uncertain receipts are tested against real PostgreSQL.
+No request body or result is stored/logged beyond an explicit consumer serializer and policy.
+
+*Compatibility:* retain the synchronous Stable surface and explicit FastAPI dependency pattern.
+New async support starts in its appropriate stability class; no middleware, routes, concrete
+models, schema migration, automatic retry or domain-specific response mapping enters the package.
+
+[[dart-01]]
+=== DART-01: Implement bounded Titect protocol conformance and optional client binding
+
+*Owner:* Dartitect. *Priority:* P1. *Dependencies:* coordinate bundle ownership with PYT-06.
+*Issue:* https://github.com/ftr-tuta/dartitect/issues/26[dartitect#26].
+
+*Evidence:* {dart-src}/packages/dartitect_sync/README.md[generic sync primitives] and the
+absence of named Titect wire profiles in the inspected public source.
+
+*Change:* add executable conformance for the existing neutral bundles and an explicit optional
+sync binding over existing ports where it removes repeated protocol plumbing. Keep message
+conformance independent from any requirement for a Flutter client to access a server broker.
+
+*Acceptance:* shared fixtures/hashes run on supported Dart VM/web targets; allocation and numeric
+limits are explicit; cursors remain opaque; unsupported capabilities fail explicitly. Consumer
+HTTP resources, local transactions, authorization and conflict mapping remain injected. No new
+runtime, ambient provider, automatic protocol selection or schema authority is introduced.
+
+*Compatibility:* preserve the stable cohort and `/1` contracts. Scope/package placement follows
+the existing public entrypoint boundaries. The inclusion gate is satisfied by reusable neutral
+encoding/validation work, not by copying a consumer API into the SDK.
+
+[[dart-02]]
+=== DART-02: Coordinate server retry hints with existing resilience primitives
+
+*Owner:* Dartitect. *Priority:* P1. *Dependencies:* align semantic vectors with PYT-05.
+*Issue:* https://github.com/ftr-tuta/dartitect/issues/27[dartitect#27].
+
+*Evidence:* {dart-src}/packages/dartitect_resilience/lib/src/retry.dart[retry primitives]
+already include jitter, cancellation, deadlines and typed uncertainty. The inspected public
+sources contain no `Retry-After` mapping; build on those primitives instead of replacing them.
+
+*Change:* provide a neutral, bounded HTTP hint value/parser at the transport boundary and
+explicit composition with retry and admission budgets. Coordinate refresh, outbox delivery,
+reconnect and background sync through consumer-owned budget scopes.
+
+*Acceptance:* delay/date hints, malformed and excessive hints, clock skew, cancellation and
+deadline exhaustion have deterministic tests. Valid server minimum delays are not shortened;
+uncertain operations never retry automatically. Cold starts and reconnect simulations stay
+within configured concurrency/queue/attempt budgets. No automatic Dio retry interceptor.
+
+*Compatibility:* maintain existing retry defaults and owned/borrowed lifetimes; clocks,
+randomness, budgets, classification and transport binding remain explicit.
+
+[[dart-03]]
+=== DART-03: Add paired durable sync recovery and reconnect conformance
+
+*Owner:* Dartitect. *Priority:* P1. *Dependencies:* DART-01, DART-02, PYT-01, PYT-06, PYT-10.
+*Issue:* https://github.com/ftr-tuta/dartitect/issues/28[dartitect#28].
+
+*Evidence:* {dart-src}/packages/dartitect_testing/lib/src/sync_harness.dart[existing simulated
+checkpoint/restart harnesses] and incremental benchmarks are useful but do not establish a
+paired client/database/server recovery guarantee.
+
+*Change:* extend the existing harnesses with real consumer persistence and an actual Pytitect
+reference boundary. Exercise local outbox recovery, server receipts, confirmed checkpoints,
+session replacement, bounded bootstrap and reconnect storms.
+
+*Acceptance:* kill/restart at local commit, remote commit, response loss, page application and
+checkpoint boundaries. No checkpoint exceeds durable state, no old generation publishes, and
+uncertain operations retain identity. Test expired cursors, unresolved local mutations, storage
+failure and bounded memory. Use native/web persistence fixtures only where support is declared;
+do not infer cross-process fencing from process-local test stores.
+
+*Compatibility:* use existing Native Strict ownership and incremental execution. Domain conflict
+resolution and application-generated schemas remain outside Dartitect.
+
+=== Dependency order and completion rules
+
+Start PYT-01, PYT-02 and the deterministic PYT-03/F03 fixes first. Establish the relay transaction
+composition before claiming concurrent PostgreSQL readiness. Coordinate PYT-06/DART-01 as a
+paired contract effort with an agreed immutable bundle, not a circular requirement to release
+both packages first. DART-02 and PYT-05 share semantic test cases, not language-level APIs.
+
+Complete recovery conformance before interpreting capacity results as production readiness.
+A green issue closure requires the stated evidence, compatibility notes and the normal PR gates.
+Do not close an investigation merely because a new abstraction was added. Reuse or update an
+existing equivalent issue after rechecking both repositories; avoid duplicate ownership.
+
+[[validation]]
+== Acceptance matrix for future implementations
+
+[cols="1,3,3",options="header"]
+|===
+|Scenario |Fault or pressure |Required observable result
+|T01 |Crash before local commit |No accepted local effects; redelivery can execute safely
+|T02 |Commit then crash before ACK |Redelivery sees durable completion; no duplicate local effects
+|T03 |Publish confirmation then crash before settlement |Duplicate publication is tolerated by receiving inbox
+|T04 |Lease expiry and competing takeover |Old authority cannot commit after replacement authority
+|T05 |Two first checkpoint writers |One defined winner; loser outcome is handled without partial state
+|T06 |Slow database and exhausted pool |Bounded wait/admission; no unbounded tasks or connections
+|T07 |Broker outage and recovery |Durable bounded-policy backlog; controlled drain and retry amplification
+|T08 |Permanent failure and failed quarantine |No terminal ACK until required quarantine is durable
+|T09 |Unexpected exception or cancellation |Visible unexpected failure; cancellation propagates after cleanup
+|T10 |Clock jump, delayed publication and queued claim |Current-time expiry checks and bounded elapsed deadlines
+|T11 |Client loses response after server commit |Original identity reconciles to one accepted logical operation
+|T12 |Crash between page apply and checkpoint |Replay is safe; checkpoint never claims missing durable state
+|T13 |Session change during in-flight work |Obsolete generation cannot publish or mutate replacement state
+|T14 |Expired cursor and large bootstrap |Explicit resync, preserved pending mutations, bounded pages/memory
+|T15 |Hot partition, reconnect surge and sustained overload |Isolation/fairness budget holds; errors count in results
+|T16 |Projection rebuild and interrupted cutover |Fixed coverage is verified; checkpoint and version do not regress
+|T17 |Backup restore and regional takeover |Measured RPO/RTO, authority fencing and receipt reconciliation
+|T18 |Old/new protocol combinations and malicious encodings |Declared compatibility only; bounded, deterministic rejection
+|T19 |Telemetry sink fails or floods |Business behavior unchanged; retention and cardinality bounded
+|T20 |Rolling deployment and rollback under load |Compatible messages remain recoverable and admission stays bounded
+|===
+
+Policy tests use injected clocks, randomness and finite harnesses. Durable integration tests use
+independent real sessions and subprocesses; broker tests assert actual transport behavior.
+Paired tests use real declared client persistence. Fault tests examine durable invariants, not
+preassigned expected booleans. Load tests include dependency failures and post-fault recovery.
+
+Keep required checks proportional but meaningful: every adapter change runs its real representative
+integration suite, every wire change runs paired conformance, every admission/runtime change runs
+bounded-resource tests, and release evidence identifies the exact artifacts tested. Wider provider,
+platform and soak matrices supplement those gates rather than substituting for them.
+
+[[reproduction]]
+== Reproduction of the audited timing and backoff observations
+
+Run the following with the audited Pytitect checkout installed in the local environment.
+It uses only finite process-local stores and a synthetic clock. It performs no network or
+database operations. The expected output describes the audited commit, not desired behavior.
+
+[source,python]
+----
+import asyncio
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+
+from pytitect.aio import (
+    AsyncConsumer, AsyncRelay, InMemoryAsyncOutboxStore,
+    InMemoryAsyncUnitOfWorkFactory, InMemoryRejectedDeliveryStore,
+)
+from pytitect.application import Decision
+from pytitect.core import OpaqueId
+from pytitect.messaging import Message, PublicationRetryable, Route, RoutingTable
+from pytitect.outbox import OutboxEnvelope, RetryPolicy
+
+@dataclass
+class Clock:
+    value: datetime = datetime(2026, 9, 5, tzinfo=UTC)
+
+    def now(self):
+        return self.value
+
+def message():
+    return Message(
+        id="probe-1", source="urn:example:probe", type="example.probe.v1",
+        subject="probe", time=datetime(2026, 9, 5, tzinfo=UTC),
+        dataschema="urn:example:probe:1", data={},
+    )
+
+class Store(InMemoryAsyncOutboxStore):
+    async def retry(self, claim, *, available_at):
+        self.retry_at = available_at
+        return await super().retry(claim, available_at=available_at)
+
+class Delivery:
+    message = message()
+
+    async def ack(self):
+        pass
+
+    async def retry(self, *, delay=None):
+        pass
+
+    async def terminate(self):
+        pass
+
+async def main():
+    clock = Clock()
+
+    class Publisher:
+        async def publish(self, **kwargs):
+            clock.value += timedelta(seconds=5)
+            return PublicationRetryable("synthetic delay")
+
+    store = Store()
+    await store.add(OutboxEnvelope(
+        OpaqueId("probe-1"), "probe", message(), clock.now(), clock.now(),
+    ))
+    await AsyncRelay(
+        store, Publisher(),
+        RoutingTable([Route("example.probe.v1", "probe")]), clock=clock,
+    ).run_once(limit=1)
+    print("retry offset seconds:", (store.retry_at - clock.now()).total_seconds())
+
+    clock = Clock()
+
+    async def handler(msg, context):
+        clock.value += timedelta(seconds=2)
+        return Decision(result=None)
+
+    consumer = AsyncConsumer(
+        consumer="probe", namespace="probe", handler=handler,
+        unit_of_work=InMemoryAsyncUnitOfWorkFactory(),
+        quarantine=InMemoryRejectedDeliveryStore(), clock=clock,
+        reservation_ttl=timedelta(seconds=1),
+    )
+    print("expired reservation:", await consumer.process(Delivery()))
+
+asyncio.run(main())
+try:
+    print(RetryPolicy(max_attempts=100).delay(60))
+except OverflowError:
+    print("retry arithmetic: OverflowError")
+----
+
+[listing]
+----
+retry offset seconds: -4.0
+expired reservation: acknowledged
+retry arithmetic: OverflowError
+----
+
+[[delivery-validation]]
+== Document delivery verification
+
+The document is maintained in AsciiDoc and linked from the public README. Runtime and wire
+contracts are unchanged by this delivery. Generated HTML and temporary audit scripts are local
+verification artifacts and are not package contents.
+
+The full local gate `uv run --no-sync python tool/verify.py` passed on {revdate}:
+
+* 219 tests passed; one PostgreSQL test skipped because `TEST_POSTGRES_DSN` was not configured.
+* Branch coverage was 86.88% globally, 91.04% for core/HTTP/contracts, 96.58% for the
+idempotency/sync/leases/security parser group, and 97.37% for critical event-platform paths.
+* Lint, formatting, strict typing, documentation, release metadata, API snapshots, protocol
+bundles, reference-project structure and optional-import checks passed.
+* Wheel and source distribution builds, Twine checks, and all 16 clean-environment smoke
+combinations passed. No runtime or dependency source was changed.
+
+AsciiDoc rendering with warnings treated as failures passed. An additional local check verified
+explicit anchors, internal cross-references, pinned repository source paths, and the exact output
+of the reproduction block. Issue links were checked against the GitHub publication record.
+Final documentation edits received another render, link/anchor check, Markdown documentation
+check and diff-whitespace check. GitHub-hosted checks are recorded on the delivery PR;
+local success does not substitute for those required checks.
+
+The existing `tool/docs_quality.py` scans Markdown, so its success alone is not AsciiDoc QA.
+Render this document explicitly and check its internal references:
+
+[source,console]
+----
+asciidoctor --failure-level WARN -o /tmp/pytitect-large-scale-roadmap.html docs/large-scale-architecture-roadmap.adoc
+uv run python tool/verify.py
+git diff --check
+----
+
+The roadmap is complete as a research/documentation delivery when every coverage row has a
+disposition, all issue links resolve to their intended repository, and the PR records actual
+checks and remaining limits. The architectural capabilities themselves are complete only when
+their individual implementation issues meet the acceptance evidence above.
+
+
+[[implementation-evidence]]
+== Independent Python implementation and validation
+
+The original documentation delivery is preserved in this branch. The following implementation
+extends its independent Python work without changing Dartitect or either `/1` wire bundle.
+The detailed consumer contract and adoption guide is
+link:reliability-foundations.md[Independent reliability foundations].
+
+[cols="1,3,4",options="header"]
+|===
+|Issue |Implemented boundary |Executable evidence
+|#35 |Conditional checkpoint insertion/CAS; real PostgreSQL session and Django adapter conformance
+|`tests/integration/test_postgres.py`, `tests/test_postgresql_leases.py`, `tests/integration/django_probe.py`
+|#36 |Real JetStream and EventBridge/SQS clients; isolated resources; deterministic process death
+|`tests/integration/test_brokers.py`, `tests/integration/test_crash_recovery.py`
+|#37 |Fresh transition UTC, monotonic authority/deadlines, expiry checked after lock acquisition
+|`tests/test_reliability_runtime.py`, PostgreSQL unchanged-row lock-wait regression and takeover tests
+|#38 |Fixed relay workers; count/encoded-byte admission; busy result; independent session transactions
+|Runtime resource tests and PostgreSQL concurrent claims/settlements; real HTTP fixture
+|#39 |Saturating Stable arithmetic; Preview jitter, time budget, shared finite retry allowance and minimum hints
+|Seeded resilience vectors, deadline/budget deferral and uncertainty reconciliation tests
+|#41 |Typed dispositions; visible unexpected failures; optional fixed runtime facts; backlog readiness
+|Consumer cancellation/commit/ACK/quarantine tests, observer failure tests and readiness thresholds
+|#42 |Process/inbox/effect/timer atomicity; jobs/fences; commit-ordered logs; snapshots; durable projection/rebuild and retention
+|`tests/integration/test_workflows.py`, async reference conformance, interrupted terminal-retention tests
+|#44 |Explicit async ports and SQLAlchemy request/receipt/outbox transaction with independent reconciliation
+|Concurrent same-key requests, expired authority, real commit-response-loss and subprocess pre/post-commit tests
+|#43 (partial) |Synthetic Python HTTP/PostgreSQL/JetStream offered load, saturation, crash recovery and soak fixture
+|`benchmarks/python/run.py`; required representative and weekly/manual soak CI reports
+|===
+
+The persistence inventory distinguishes actual adapters from `ModelBundle` slots. Consumer-owned
+models, uniqueness constraints, serializers, reducers, callbacks, schemas, migrations, routing,
+authorization and process scheduling remain outside the package. SQL event ordering is scoped to
+the explicitly selected log and serialized by a transactional position row, not a sequence that
+could expose a later commit first. Uncertain publications remain held for explicit reconciliation;
+a crash before recording a result retains the documented at-least-once recovery window.
+
+A real PostgreSQL test demonstrated that an `UPDATE` expiry predicate may be evaluated before a
+wait on an unchanged row lock. The implementation first obtains the row lock and then evaluates
+current authority in a new statement under that lock. The regression waits until PostgreSQL
+reports a blocked writer, lets the lease expire and releases the unchanged holder; settlement
+must return stale. This is database evidence in addition to injected-clock unit tests.
+
+The historical reproduction in <<reproduction>> must run against the audited commit. Current
+Preview async retry requires an independent `at` argument, consumers return typed dispositions,
+and unexpected failures propagate. These adoption changes are listed in the changelog and
+public API snapshot; Stable synchronous signatures and default retry policy values are preserved.
+
+=== Reproduction and evidence limits
+
+The final production implementation passed `uv run python tool/verify.py` at
+`708ad6fe94c251fddbb66325d5034b22f76d1600`: 255 tests passed, no selected integration was skipped,
+and the manual real-AWS case was deselected. Coverage was 88.36% globally, 91.04% for
+core/HTTP/contracts, 96.58% for the risk tier and 95.55% for critical event-platform paths.
+All 16 isolated wheel installation combinations passed. The subsequently hardened benchmark
+runner at `b54e68cda565e943cdf21a0503b1c7004e3c82ec` passed representative offered/saturation/recovery
+scenarios and a 60-second soak; an intentional memory-budget failure retained its failed report.
+link:evidence/2026-09-05-python/README.md[Local evidence and measurement limits] links the raw JSON,
+image identities and the earlier failed soak observation. The 30-minute scheduled run is not
+claimed as local evidence.
+
+[source,console]
+----
+uv sync --all-extras --frozen
+uv run pytest --no-cov
+uv run python tool/integration_environment.py -- uv run python tool/verify.py
+uv run python tool/integration_environment.py --services postgres,nats -- uv run python -m benchmarks.python.run --output /tmp/capacity.json
+asciidoctor --failure-level WARN -o /tmp/pytitect-roadmap.html docs/large-scale-architecture-roadmap.adoc
+----
+
+The selected live suite fails when infrastructure is missing; a fake client cannot satisfy those
+checks. Container health waits, database/network waits and subprocess barriers have finite limits.
+Cleanup targets only resources created by that run. Required CI includes real representative
+integrations, all existing coverage minima with new critical paths included, and correctness/resource
+capacity gates. PostgreSQL adapter changes run versions 15--18; longer soak scenarios run weekly or
+manually. AWS remains an explicitly credentialed manual real-service canary, separate from LocalStack.
+
+Capacity reports record source and environment identity, seed, offered load, rejection/error
+categories, useful durable throughput, latency tails, backlog age, retries, memory, tasks, connection
+and lock-wait observations, and recovery time. Sampled observations can miss brief peaks. Initial
+gates assert durable correctness and configured resource limits; latency baselines require repeated
+runs on dedicated infrastructure. The reports do not establish a global service capacity.
+
+Tracker #34, paired interoperability #40 and partially delivered benchmark #43 remain open.
+No Dartitect changes, merge, release, tag update or protection bypass is part of this delivery.
+The replacement PR records the final local and hosted verification results; those results are
+separate from the original documentation delivery evidence in <<delivery-validation>>.
+
+
+[[exact-wire-implementation]]
+=== Candidate exact wire and integrity implementation
+
+The historical audit and independent reliability evidence above remain tied to their original
+revisions. The candidate extension for #40 adds `pytitect.wire`, separately selected
+`titect-message/2`, bounded raw/streamed sync and message admission, and an optional negotiated
+`integrity-sha-256-exact-json-v1` policy. Existing `/1` binary64 decimal bytes and mapping APIs
+remain available. No default profile or binding is selected automatically.
+
+link:exact-wire.md[Exact wire contract and adoption] defines scalar ordering, unchanged numeric
+tokens, the full-envelope SHA-256 preimage and acknowledgement requirements. The authoritative
+`interop/conformance` corpus retains all 156 historical cases and adds explicit expectations;
+`tool/wire_conformance.py` runs raw boundaries. `tests/integration/test_exact_wire.py` exercises
+PostgreSQL byte persistence, JetStream relay/consumer preservation and unchanged database effects
+and checkpoints after integrity rejection. The new parsers remain within the existing risk and
+critical-path coverage floors.
+
+These Python checks do not close #40 or #43: updated committed Dart VM/Chrome conformance,
+all durable recovery extensions, paired reconnect/load evidence and the finite 30-minute soak
+must pass before capacity and interoperability acceptance. Candidate evidence is not release
+acceptance. The protected merge and integrated-SHA reruns remain pending; no release is included.

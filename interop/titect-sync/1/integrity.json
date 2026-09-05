@@ -1,0 +1,10 @@
+{
+  "capability": "integrity-sha-256-exact-json-v1",
+  "algorithm": "sha-256",
+  "preimagePrefixHex": "7469746563742d73796e632f3100696e746567726974792d7368612d3235362d65786163742d6a736f6e2d763100",
+  "encoding": "titect-message/2/encoding.json",
+  "scope": "complete envelope after removing payload.integrity",
+  "itemCount": "upserts plus tombstones; integer token equal to derived count",
+  "selection": "explicit bootstrap request and Titect-Sync-Integrity response acknowledgement",
+  "withoutSelection": "legacy shape-only validation"
+}

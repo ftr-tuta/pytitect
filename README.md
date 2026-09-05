@@ -94,6 +94,9 @@ See the focused guides in [`docs/`](docs/architecture.md), the executable
 [`1.0 migration guide`](docs/migration-1.0.md).
 Event-platform adopters should start with the [`1.6 adoption guide`](docs/event-platform-adoption.md)
 and review its [`compatibility matrix`](docs/event-platform-compatibility.md).
+The [`large-scale architecture roadmap`](docs/large-scale-architecture-roadmap.adoc) records the
+Pytitect/Dartitect audit, the FastAPI-led reference architecture, and prioritized reliability,
+interoperability, and capacity-validation work.
 
 ## Security boundaries
 

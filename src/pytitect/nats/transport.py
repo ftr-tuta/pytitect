@@ -8,11 +8,13 @@ from typing import Any, Protocol
 
 from pytitect.messaging import (
     JsonMessageCodec,
-    Message,
+    MessageCodec,
+    MessageValue,
     PublicationConfirmed,
     PublicationRejected,
     PublicationResult,
     PublicationRetryable,
+    PublicationUncertain,
     TransportCapabilities,
 )
 
@@ -37,15 +39,13 @@ class NatsJetStreamPublisher:
 
     capabilities = NATS_CAPABILITIES
 
-    def __init__(
-        self, jetstream: JetStreamContext, *, codec: JsonMessageCodec | None = None
-    ) -> None:
+    def __init__(self, jetstream: JetStreamContext, *, codec: MessageCodec | None = None) -> None:
         self._jetstream = jetstream
         self._codec = codec or JsonMessageCodec(
             max_envelope_bytes=NATS_CAPABILITIES.max_message_bytes
         )
 
-    async def publish(self, *, destination: str, message: Message) -> PublicationResult:
+    async def publish(self, *, destination: str, message: MessageValue) -> PublicationResult:
         if not destination:
             return PublicationRejected("destination is empty")
         try:
@@ -62,13 +62,13 @@ class NatsJetStreamPublisher:
             return classify_nats_publication_error(exc)
         sequence = getattr(acknowledgment, "seq", None)
         if sequence is None:
-            return PublicationRetryable("JetStream acknowledgement has no sequence")
+            return PublicationUncertain("JetStream acknowledgement has no sequence")
         stream = getattr(acknowledgment, "stream", "jetstream")
         return PublicationConfirmed(f"{stream}:{sequence}")
 
 
 class NatsDelivery:
-    def __init__(self, raw_message: Any, *, codec: JsonMessageCodec | None = None) -> None:
+    def __init__(self, raw_message: Any, *, codec: MessageCodec | None = None) -> None:
         self._raw = raw_message
         self._codec = codec or JsonMessageCodec(
             max_envelope_bytes=NATS_CAPABILITIES.max_message_bytes
@@ -77,7 +77,7 @@ class NatsDelivery:
         self._settled = False
 
     @property
-    def message(self) -> Message:
+    def message(self) -> MessageValue:
         return self._message
 
     async def ack(self) -> None:
@@ -111,7 +111,7 @@ class NatsPullDeliverySource:
         subscription: PullSubscription,
         *,
         fetch_timeout: timedelta = timedelta(seconds=5),
-        codec: JsonMessageCodec | None = None,
+        codec: MessageCodec | None = None,
     ) -> None:
         if fetch_timeout <= timedelta(0):
             raise ValueError("fetch timeout must be positive")
@@ -130,11 +130,13 @@ class NatsPullDeliverySource:
 
 
 def classify_nats_publication_error(error: Exception) -> PublicationResult:
-    """Classify connectivity/timeouts as retryable and invalid requests as permanent."""
+    """Preserve transport uncertainty; only explicit rejections authorize retry."""
 
     name = type(error).__name__.lower()
-    if isinstance(error, (TimeoutError, ConnectionError, OSError)) or any(
-        marker in name for marker in ("timeout", "connection", "unavailable", "noresponders")
-    ):
+    if "noresponders" in name:
         return PublicationRetryable(type(error).__name__)
+    if isinstance(error, (TimeoutError, ConnectionError, OSError)) or any(
+        marker in name for marker in ("timeout", "connection", "unavailable")
+    ):
+        return PublicationUncertain(type(error).__name__)
     return PublicationRejected(type(error).__name__)

@@ -11,7 +11,7 @@ APIs follow semantic-versioning compatibility after 1.0.
 
 ## Preview
 
-Exports from `pytitect.sync`, `pytitect.messaging`, `pytitect.application`, `pytitect.aio`,
+Exports from `pytitect.wire`, `pytitect.sync`, `pytitect.messaging`, `pytitect.application`, `pytitect.aio`,
 `pytitect.operations`, `pytitect.processes`, `pytitect.jobs`, `pytitect.projections`, and
 `pytitect.event_sourcing` are Preview during the 1.6 release-candidate series. Versioned wire bundles
 are closed independently from Python API maturity. Preview APIs require an explicit changelog entry

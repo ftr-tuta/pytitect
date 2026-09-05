@@ -8,7 +8,7 @@ from types import MappingProxyType
 from typing import Protocol
 
 from pytitect.core import JsonValue, validate_json
-from pytitect.messaging import Message
+from pytitect.messaging import MessageValue
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,7 +40,7 @@ class DomainEvent:
 
 @dataclass(frozen=True, slots=True)
 class IntegrationEvent:
-    message: Message
+    message: MessageValue
 
 
 @dataclass(frozen=True, slots=True)

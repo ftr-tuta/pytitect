@@ -26,10 +26,12 @@ def format_message_time(value: datetime) -> str:
 def parse_message_time(value: str) -> datetime:
     """Parse the single timestamp representation accepted by the profile."""
 
-    if not _TIMESTAMP.fullmatch(value):
+    if not isinstance(value, str) or not _TIMESTAMP.fullmatch(value):
         raise ValueError("message time must be an RFC 3339 UTC timestamp in milliseconds")
     parsed = datetime.fromisoformat(value[:-1] + "+00:00")
     _require_millisecond_utc(parsed)
+    if format_message_time(parsed) != value:
+        raise ValueError("message time is not an exact calendar representation")
     return parsed
 
 

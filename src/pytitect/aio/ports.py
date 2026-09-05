@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator, Sequence
 from datetime import datetime, timedelta
 from typing import Protocol
 
+from pytitect.aio.resilience import SettlementResult
 from pytitect.checkpoints import Checkpoint
 from pytitect.core import OpaqueId
 from pytitect.inbox import InboxDecision, InboxScope
@@ -42,14 +43,42 @@ class AsyncOutboxStore[PayloadT](Protocol):
     async def add(self, envelope: OutboxEnvelope[PayloadT]) -> OutboxAddResult: ...
 
     async def claim(
-        self, *, now: datetime, limit: int, claim_ttl: timedelta
+        self, *, now: datetime, limit: int, claim_ttl: timedelta, max_bytes: int | None = None
     ) -> Sequence[OutboxClaim[PayloadT]]: ...
 
-    async def delivered(self, claim: OutboxClaim[PayloadT], *, at: datetime) -> bool: ...
+    async def delivered(
+        self, claim: OutboxClaim[PayloadT], *, at: datetime
+    ) -> SettlementResult: ...
 
-    async def retry(self, claim: OutboxClaim[PayloadT], *, available_at: datetime) -> bool: ...
+    async def retry(
+        self, claim: OutboxClaim[PayloadT], *, available_at: datetime, at: datetime
+    ) -> SettlementResult: ...
 
-    async def failed(self, claim: OutboxClaim[PayloadT], *, reason: str, at: datetime) -> bool: ...
+    async def defer(
+        self, claim: OutboxClaim[PayloadT], *, available_at: datetime, at: datetime
+    ) -> SettlementResult: ...
+
+    async def uncertain(
+        self,
+        claim: OutboxClaim[PayloadT],
+        *,
+        reason: str,
+        at: datetime,
+    ) -> SettlementResult: ...
+
+    async def resolve_uncertain(
+        self,
+        message_id: OpaqueId[object],
+        *,
+        expected_at: datetime,
+        delivered: bool,
+        available_at: datetime,
+        at: datetime,
+    ) -> SettlementResult: ...
+
+    async def failed(
+        self, claim: OutboxClaim[PayloadT], *, reason: str, at: datetime
+    ) -> SettlementResult: ...
 
 
 class AsyncCheckpointStore(Protocol):

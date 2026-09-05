@@ -13,6 +13,7 @@ from pytitect.messaging import (
     PublicationRejected,
     PublicationResult,
     PublicationRetryable,
+    PublicationUncertain,
     TransportCapabilities,
 )
 
@@ -62,7 +63,7 @@ class NatsJetStreamPublisher:
             return classify_nats_publication_error(exc)
         sequence = getattr(acknowledgment, "seq", None)
         if sequence is None:
-            return PublicationRetryable("JetStream acknowledgement has no sequence")
+            return PublicationUncertain("JetStream acknowledgement has no sequence")
         stream = getattr(acknowledgment, "stream", "jetstream")
         return PublicationConfirmed(f"{stream}:{sequence}")
 
@@ -130,11 +131,13 @@ class NatsPullDeliverySource:
 
 
 def classify_nats_publication_error(error: Exception) -> PublicationResult:
-    """Classify connectivity/timeouts as retryable and invalid requests as permanent."""
+    """Preserve transport uncertainty; only explicit rejections authorize retry."""
 
     name = type(error).__name__.lower()
-    if isinstance(error, (TimeoutError, ConnectionError, OSError)) or any(
-        marker in name for marker in ("timeout", "connection", "unavailable", "noresponders")
-    ):
+    if "noresponders" in name:
         return PublicationRetryable(type(error).__name__)
+    if isinstance(error, (TimeoutError, ConnectionError, OSError)) or any(
+        marker in name for marker in ("timeout", "connection", "unavailable")
+    ):
+        return PublicationUncertain(type(error).__name__)
     return PublicationRejected(type(error).__name__)

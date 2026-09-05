@@ -146,6 +146,8 @@ def trace_from_transport_headers(headers: Mapping[str, str]) -> TraceContext | N
 
 
 __all__ = [
+    "BacklogLimits",
+    "BacklogSnapshot",
     "Metric",
     "MetricSink",
     "NullMetricSink",
@@ -161,3 +163,33 @@ __all__ = [
     "trace_from_transport_headers",
     "trace_transport_headers",
 ]
+
+
+@dataclass(frozen=True, slots=True)
+class BacklogSnapshot:
+    pending: int
+    oldest_age: timedelta
+    retained_bytes: int
+
+    def __post_init__(self) -> None:
+        if self.pending < 0 or self.oldest_age < timedelta(0) or self.retained_bytes < 0:
+            raise ValueError("backlog observations must not be negative")
+
+
+@dataclass(frozen=True, slots=True)
+class BacklogLimits:
+    max_pending: int
+    max_age: timedelta
+    max_bytes: int
+
+    def __post_init__(self) -> None:
+        if self.max_pending < 0 or self.max_age < timedelta(0) or self.max_bytes < 0:
+            raise ValueError("backlog limits must not be negative")
+
+    def evaluate(self, snapshot: BacklogSnapshot) -> ProbeResult:
+        return ProbeResult(
+            "backlog",
+            snapshot.pending <= self.max_pending
+            and snapshot.oldest_age <= self.max_age
+            and snapshot.retained_bytes <= self.max_bytes,
+        )

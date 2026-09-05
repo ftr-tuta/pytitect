@@ -157,6 +157,7 @@ class ProcessManagerStore(Protocol):
 @dataclass(slots=True)
 class _Timer:
     value: ProcessTimer
+    terminal: bool = False
     claim_id: str | None = None
     claimed_until: datetime | None = None
 
@@ -210,7 +211,10 @@ class InMemoryProcessManagerStore:
             state = ProcessState(key, actual + 1, decision.status, decision.state, at)
             cancelled = 0
             for timer_id in decision.cancel_timers:
-                cancelled += int(self._timers.pop((key, timer_id), None) is not None)
+                pending = self._timers.get((key, timer_id))
+                if pending is not None and not pending.terminal:
+                    pending.terminal = True
+                    cancelled += 1
             for schedule in decision.schedule:
                 timer = ProcessTimer(key, schedule.timer_id, schedule.due_at, schedule.effect)
                 self._timers[(key, schedule.timer_id)] = _Timer(timer)
@@ -238,7 +242,7 @@ class InMemoryProcessManagerStore:
             for stored in eligible:
                 if len(claims) >= limit:
                     break
-                if stored.value.due_at > now:
+                if stored.terminal or stored.value.due_at > now:
                     continue
                 if stored.claimed_until is not None and stored.claimed_until > now:
                     continue
@@ -263,11 +267,14 @@ class InMemoryProcessManagerStore:
             stored = self._timers.get(identity)
             if (
                 stored is None
+                or stored.terminal
                 or stored.claim_id != claim.claim_id
                 or stored.value.fencing_token != claim.timer.fencing_token
             ):
                 return False
-            self._timers.pop(identity)
+            stored.terminal = True
+            stored.claim_id = None
+            stored.claimed_until = None
             return True
 
 

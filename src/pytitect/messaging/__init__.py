@@ -19,12 +19,14 @@ from pytitect.messaging.model import (
 from pytitect.messaging.registry import MessageType, MessageTypeRegistry
 from pytitect.messaging.results import (
     DeliveryAck,
+    DeliveryDisposition,
     DeliveryRetry,
     DeliveryTerminated,
     PublicationConfirmed,
     PublicationRejected,
     PublicationResult,
     PublicationRetryable,
+    PublicationUncertain,
 )
 from pytitect.messaging.routing import Route, RoutingTable
 
@@ -37,6 +39,7 @@ __all__ = [
     "CapabilityRequirements",
     "CodecRegistry",
     "DeliveryAck",
+    "DeliveryDisposition",
     "DeliveryRetry",
     "DeliveryTerminated",
     "JsonMessageCodec",
@@ -48,6 +51,7 @@ __all__ = [
     "PublicationRejected",
     "PublicationResult",
     "PublicationRetryable",
+    "PublicationUncertain",
     "Route",
     "RoutingTable",
     "TransportCapabilities",

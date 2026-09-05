@@ -1,0 +1,24 @@
+{
+  "run_id": "0643c478750a41c3af83ab486ab89451",
+  "services": {
+    "postgres": {
+      "image": "postgres:16",
+      "image_id": "sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20"
+    },
+    "nats": {
+      "image": "nats:2.14.5",
+      "image_id": "sha256:026a66a4497c6d7d3eed741781770099c48c755bf3a55b6950d76dd210596eb3"
+    },
+    "localstack": {
+      "image": "localstack/localstack:4.14.0",
+      "image_id": "sha256:3ebc37595918b8accb852f8048fef2aff047d465167edd655528065b07bc364a"
+    }
+  },
+  "command": [
+    "uv",
+    "run",
+    "--no-sync",
+    "python",
+    "/tmp/pytitect-capacity-validation.py"
+  ]
+}

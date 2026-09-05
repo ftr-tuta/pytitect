@@ -1253,6 +1253,17 @@ public API snapshot; Stable synchronous signatures and default retry policy valu
 
 === Reproduction and evidence limits
 
+The final production implementation passed `uv run python tool/verify.py` at
+`708ad6fe94c251fddbb66325d5034b22f76d1600`: 255 tests passed, no selected integration was skipped,
+and the manual real-AWS case was deselected. Coverage was 88.36% globally, 91.04% for
+core/HTTP/contracts, 96.58% for the risk tier and 95.55% for critical event-platform paths.
+All 16 isolated wheel installation combinations passed. The subsequently hardened benchmark
+runner at `b54e68cda565e943cdf21a0503b1c7004e3c82ec` passed representative offered/saturation/recovery
+scenarios and a 60-second soak; an intentional memory-budget failure retained its failed report.
+link:evidence/2026-09-05-python/README.md[Local evidence and measurement limits] links the raw JSON,
+image identities and the earlier failed soak observation. The 30-minute scheduled run is not
+claimed as local evidence.
+
 [source,console]
 ----
 uv sync --all-extras --frozen

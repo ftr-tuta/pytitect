@@ -69,7 +69,7 @@ def main() -> int:
     run(python, "-m", "ruff", "format", "--check", ".")
     run(python, "-m", "ruff", "check", ".")
     run(python, "-m", "mypy")
-    run(python, "-m", "pytest")
+    run(python, "-m", "pytest", "-m", "not aws_live")
     run(python, "tool/coverage_gate.py")
     run(python, "tool/docs_quality.py")
     run(python, "tool/release_notes.py", "--check")

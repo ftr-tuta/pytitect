@@ -21,7 +21,14 @@ from pytitect.application import (
     HandlingContext,
 )
 from pytitect.core import OpaqueId
-from pytitect.messaging import Message, PublicationConfirmed, Route, RoutingTable
+from pytitect.messaging import (
+    DeliveryAck,
+    DeliveryTerminated,
+    Message,
+    PublicationConfirmed,
+    Route,
+    RoutingTable,
+)
 from pytitect.outbox import OutboxEnvelope
 
 NOW = datetime(2026, 9, 3, tzinfo=UTC)
@@ -99,9 +106,9 @@ def test_consumer_acknowledges_only_after_atomic_commit_and_suppresses_duplicate
     )
 
     async def exercise() -> None:
-        assert await consumer.process(Delivery(event(), log)) == "acknowledged"
+        assert await consumer.process(Delivery(event(), log)) == DeliveryAck()
         log.append("between")
-        assert await consumer.process(Delivery(event(), log)) == "acknowledged"
+        assert await consumer.process(Delivery(event(), log)) == DeliveryAck()
 
     asyncio.run(exercise())
     assert log == ["handled", "ack", "between", "ack"]
@@ -123,7 +130,7 @@ def test_permanent_failure_terminates_only_after_quarantine() -> None:
         quarantine_policy=QuarantinePolicy(retain_payload=False),
     )
     log: list[str] = []
-    assert asyncio.run(consumer.process(Delivery(event(), log))) == "terminated"
+    assert isinstance(asyncio.run(consumer.process(Delivery(event(), log))), DeliveryTerminated)
     assert log == ["term"]
     assert quarantine.items[0].payload is None
     assert quarantine.items[0].reason == "private failure details"

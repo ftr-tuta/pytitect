@@ -762,7 +762,7 @@ def test_mutation_batch_store_edges_and_unprovable_resume() -> None:
     dry = terminal.purge(PurgeIdempotencyPlan(NOW + timedelta(1), dry_run=True))
     assert (dry.selected, dry.affected) == (1, 0)
 
-    from conftest import ManualClock
+    from tests.conftest import ManualClock
 
     clock = ManualClock()
 

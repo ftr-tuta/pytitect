@@ -8,7 +8,7 @@ from pytitect.aio import (
 )
 from pytitect.application import Decision
 from pytitect.faststream_nats import FastStreamNatsAdapter
-from pytitect.messaging import JsonMessageCodec, Message
+from pytitect.messaging import DeliveryAck, JsonMessageCodec, Message
 
 
 class RawMessage:
@@ -45,5 +45,5 @@ def test_adapter_returns_unregistered_handler_and_delegates_to_runtime() -> None
     adapter = FastStreamNatsAdapter(consumer)
     raw = RawMessage()
     result = asyncio.run(adapter.subscriber_handler()(JsonMessageCodec().encode(message), raw))
-    assert result == "acknowledged"
+    assert result == DeliveryAck()
     assert raw.actions == ["ack"]

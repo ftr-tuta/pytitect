@@ -80,6 +80,7 @@ from pytitect.messaging import (
     CapabilitiesRejected,
     CapabilityRequirements,
     CodecRegistry,
+    DeliveryRetry,
     DeliveryTerminated,
     JsonMessageCodec,
     Message,
@@ -88,6 +89,7 @@ from pytitect.messaging import (
     PublicationConfirmed,
     PublicationRejected,
     PublicationRetryable,
+    PublicationUncertain,
     Route,
     RoutingTable,
     TransportCapabilities,
@@ -289,7 +291,7 @@ def test_async_reference_store_transition_edges() -> None:
         envelope = OutboxEnvelope(OpaqueId("outbox"), "events", "value", NOW, NOW)
         await outbox.add(envelope)
         claim = (await outbox.claim(now=NOW, limit=1, claim_ttl=timedelta(seconds=1)))[0]
-        assert await outbox.retry(claim, available_at=NOW)
+        assert await outbox.retry(claim, available_at=NOW, at=NOW)
         claim = (await outbox.claim(now=NOW, limit=1, claim_ttl=timedelta(seconds=1)))[0]
         assert await outbox.failed(claim, reason="terminal", at=NOW)
 
@@ -423,8 +425,13 @@ def test_consumer_retry_classification(failure: Exception) -> None:
         unit_of_work=InMemoryAsyncUnitOfWorkFactory(),
         quarantine=InMemoryRejectedDeliveryStore(),
     )
-    assert asyncio.run(consumer.process(delivery)) == "retried"
-    assert delivery.actions == ["retry"]
+    if isinstance(failure, RetryableProcessingError):
+        assert asyncio.run(consumer.process(delivery)) == DeliveryRetry()
+        assert delivery.actions == ["retry"]
+    else:
+        with pytest.raises(type(failure)):
+            asyncio.run(consumer.process(delivery))
+        assert delivery.actions == []
 
 
 def test_consumer_bounded_run_and_failed_quarantine_retry() -> None:
@@ -503,7 +510,7 @@ def test_runtime_validation_nonaccepted_completion_and_cancellation_edges() -> N
         unit_of_work=refusing,
         quarantine=InMemoryRejectedDeliveryStore(),
     )
-    assert asyncio.run(consumer.process(delivery)) == "retried"
+    assert asyncio.run(consumer.process(delivery)) == DeliveryRetry()
 
     class CancelPublisher:
         async def publish(self, *, destination: str, message: Message) -> object:
@@ -553,7 +560,7 @@ def test_query_runtime_and_relay_retry_failure_branches() -> None:
         later = NOW + timedelta(seconds=1)
         retry_claim = await store.claim(now=later, limit=1, claim_ttl=timedelta(seconds=1))
         assert retry_claim
-        await store.retry(retry_claim[0], available_at=NOW)
+        await store.retry(retry_claim[0], available_at=NOW, at=later)
         rejected = await AsyncRelay(
             store,
             ResultPublisher([PublicationRejected("invalid")]),
@@ -570,7 +577,7 @@ def test_query_runtime_and_relay_retry_failure_branches() -> None:
     retry, rejected, unavailable = asyncio.run(exercise())
     assert retry.retried == 1
     assert rejected.failed == 1
-    assert unavailable.retried == 1
+    assert unavailable.uncertain == 1
 
 
 class ImmediateExecutor(Executor):
@@ -635,9 +642,9 @@ def test_aws_publication_and_delivery_failure_edges() -> None:
         asyncio.run(publisher.publish(destination="wrong", message=message())), PublicationRejected
     )
     assert isinstance(
-        asyncio.run(publisher.publish(destination="bus", message=message())), PublicationRetryable
+        asyncio.run(publisher.publish(destination="bus", message=message())), PublicationUncertain
     )
-    assert isinstance(classify_aws_error(OSError()), PublicationRetryable)
+    assert isinstance(classify_aws_error(OSError()), PublicationUncertain)
     assert isinstance(classify_aws_error(ValueError()), PublicationRejected)
     broken = EventBridgePublisher(
         SimpleNamespace(put_events=lambda **kwargs: (_ for _ in ()).throw(OSError("down"))),
@@ -645,7 +652,7 @@ def test_aws_publication_and_delivery_failure_edges() -> None:
         executor=ImmediateExecutor(),
     )
     assert isinstance(
-        asyncio.run(broken.publish(destination="bus", message=message())), PublicationRetryable
+        asyncio.run(broken.publish(destination="bus", message=message())), PublicationUncertain
     )
     rejected = EventBridgePublisher(
         SimpleNamespace(
@@ -805,12 +812,12 @@ def test_nats_delivery_pull_and_publication_edges() -> None:
     result = asyncio.run(
         NatsJetStreamPublisher(NoAck()).publish(destination="events", message=message())
     )
-    assert isinstance(result, PublicationRetryable)
+    assert isinstance(result, PublicationUncertain)
     assert isinstance(
         asyncio.run(NatsJetStreamPublisher(NoAck()).publish(destination="", message=message())),
         PublicationRejected,
     )
-    assert isinstance(classify_nats_publication_error(TimeoutError()), PublicationRetryable)
+    assert isinstance(classify_nats_publication_error(TimeoutError()), PublicationUncertain)
     assert isinstance(classify_nats_publication_error(ValueError()), PublicationRejected)
 
     class BrokenJetStream:
@@ -823,7 +830,7 @@ def test_nats_delivery_pull_and_publication_edges() -> None:
                 destination="events", message=message()
             )
         ),
-        PublicationRetryable,
+        PublicationUncertain,
     )
 
 

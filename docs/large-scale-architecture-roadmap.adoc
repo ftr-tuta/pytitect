@@ -9,6 +9,11 @@
 :py-src: https://github.com/ftr-tuta/pytitect/blob/dd8651b3e629f669d592802e99ac42173bf8781c
 :dart-src: https://github.com/ftr-tuta/dartitect/blob/edb89eb78c72a3690016c05d9d889de444e3d2a0
 
+The original audit and its reproduction below remain pinned to `{py-sha}` and the documentation
+commit `966fa9541352ef8d96e23c537ba8255a7fad2cd3`. Subsequent independent Python implementation and
+its validation are recorded in <<implementation-evidence>>. Historical findings and historical
+test counts do not describe the current runtime.
+
 [[decision]]
 == Decision and reading contract
 
@@ -1195,3 +1200,82 @@ The roadmap is complete as a research/documentation delivery when every coverage
 disposition, all issue links resolve to their intended repository, and the PR records actual
 checks and remaining limits. The architectural capabilities themselves are complete only when
 their individual implementation issues meet the acceptance evidence above.
+
+
+[[implementation-evidence]]
+== Independent Python implementation and validation
+
+The original documentation delivery is preserved in this branch. The following implementation
+extends its independent Python work without changing Dartitect or either `/1` wire bundle.
+The detailed consumer contract and adoption guide is
+link:reliability-foundations.md[Independent reliability foundations].
+
+[cols="1,3,4",options="header"]
+|===
+|Issue |Implemented boundary |Executable evidence
+|#35 |Conditional checkpoint insertion/CAS; real PostgreSQL session and Django adapter conformance
+|`tests/integration/test_postgres.py`, `tests/test_postgresql_leases.py`, `tests/integration/django_probe.py`
+|#36 |Real JetStream and EventBridge/SQS clients; isolated resources; deterministic process death
+|`tests/integration/test_brokers.py`, `tests/integration/test_crash_recovery.py`
+|#37 |Fresh transition UTC, monotonic authority/deadlines, expiry checked after lock acquisition
+|`tests/test_reliability_runtime.py`, PostgreSQL unchanged-row lock-wait regression and takeover tests
+|#38 |Fixed relay workers; count/encoded-byte admission; busy result; independent session transactions
+|Runtime resource tests and PostgreSQL concurrent claims/settlements; real HTTP fixture
+|#39 |Saturating Stable arithmetic; Preview jitter, time budget, shared finite retry allowance and minimum hints
+|Seeded resilience vectors, deadline/budget deferral and uncertainty reconciliation tests
+|#41 |Typed dispositions; visible unexpected failures; optional fixed runtime facts; backlog readiness
+|Consumer cancellation/commit/ACK/quarantine tests, observer failure tests and readiness thresholds
+|#42 |Process/inbox/effect/timer atomicity; jobs/fences; commit-ordered logs; snapshots; durable projection/rebuild and retention
+|`tests/integration/test_workflows.py`, async reference conformance, interrupted terminal-retention tests
+|#44 |Explicit async ports and SQLAlchemy request/receipt/outbox transaction with independent reconciliation
+|Concurrent same-key requests, expired authority, real commit-response-loss and subprocess pre/post-commit tests
+|#43 (partial) |Synthetic Python HTTP/PostgreSQL/JetStream offered load, saturation, crash recovery and soak fixture
+|`benchmarks/python/run.py`; required representative and weekly/manual soak CI reports
+|===
+
+The persistence inventory distinguishes actual adapters from `ModelBundle` slots. Consumer-owned
+models, uniqueness constraints, serializers, reducers, callbacks, schemas, migrations, routing,
+authorization and process scheduling remain outside the package. SQL event ordering is scoped to
+the explicitly selected log and serialized by a transactional position row, not a sequence that
+could expose a later commit first. Uncertain publications remain held for explicit reconciliation;
+a crash before recording a result retains the documented at-least-once recovery window.
+
+A real PostgreSQL test demonstrated that an `UPDATE` expiry predicate may be evaluated before a
+wait on an unchanged row lock. The implementation first obtains the row lock and then evaluates
+current authority in a new statement under that lock. The regression waits until PostgreSQL
+reports a blocked writer, lets the lease expire and releases the unchanged holder; settlement
+must return stale. This is database evidence in addition to injected-clock unit tests.
+
+The historical reproduction in <<reproduction>> must run against the audited commit. Current
+Preview async retry requires an independent `at` argument, consumers return typed dispositions,
+and unexpected failures propagate. These adoption changes are listed in the changelog and
+public API snapshot; Stable synchronous signatures and default retry policy values are preserved.
+
+=== Reproduction and evidence limits
+
+[source,console]
+----
+uv sync --all-extras --frozen
+uv run pytest --no-cov
+uv run python tool/integration_environment.py -- uv run python tool/verify.py
+uv run python tool/integration_environment.py --services postgres,nats -- uv run python -m benchmarks.python.run --output /tmp/capacity.json
+asciidoctor --failure-level WARN -o /tmp/pytitect-roadmap.html docs/large-scale-architecture-roadmap.adoc
+----
+
+The selected live suite fails when infrastructure is missing; a fake client cannot satisfy those
+checks. Container health waits, database/network waits and subprocess barriers have finite limits.
+Cleanup targets only resources created by that run. Required CI includes real representative
+integrations, all existing coverage minima with new critical paths included, and correctness/resource
+capacity gates. PostgreSQL adapter changes run versions 15--18; longer soak scenarios run weekly or
+manually. AWS remains an explicitly credentialed manual real-service canary, separate from LocalStack.
+
+Capacity reports record source and environment identity, seed, offered load, rejection/error
+categories, useful durable throughput, latency tails, backlog age, retries, memory, tasks, connection
+and lock-wait observations, and recovery time. Sampled observations can miss brief peaks. Initial
+gates assert durable correctness and configured resource limits; latency baselines require repeated
+runs on dedicated infrastructure. The reports do not establish a global service capacity.
+
+Tracker #34, paired interoperability #40 and partially delivered benchmark #43 remain open.
+No Dartitect changes, merge, release, tag update or protection bypass is part of this delivery.
+The replacement PR records the final local and hosted verification results; those results are
+separate from the original documentation delivery evidence in <<delivery-validation>>.

@@ -1313,3 +1313,15 @@ These Python checks do not close #40 or #43: updated committed Dart VM/Chrome co
 all durable recovery extensions, paired reconnect/load evidence and the finite 30-minute soak
 must pass before capacity and interoperability acceptance. Candidate evidence is not release
 acceptance. The protected merge and integrated-SHA reruns remain pending; no release is included.
+
+
+The candidate runtime at `8828767ed3f42cef674b9b096058cb969c9f233f` now has a completed local
+30-minute Python soak: 36,000 offered requests, 35,891 committed/received operations, 109 explicit
+rejections, reconciled durable counts and zero pending outbox after the finite drain. The original
+rate of 20 requests/second, 120-second drain budget and resource limits were retained. The later
+CI-only extension at `13ffcb8a048ad89f7b4739abd6da5764adfc3498` has an identical SDK source tree
+and passed the full 381-test local gate and all 16 wheel installation combinations.
+link:evidence/2026-09-05-exact/README.md[Candidate measurements, checksums and limits] records exact
+identities and the failed hosted paired gate. The required paired job currently rejects the old
+Dart corpus; updated committed Dart evidence is still required before merge or closure of #40,
+#43 and #34. This is Python capacity evidence, not completed paired client acceptance.

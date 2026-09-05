@@ -1,0 +1,51 @@
+{
+  "pythonSha": "8828767ed3f42cef674b9b096058cb969c9f233f",
+  "scope": "Python candidate; paired acceptance pending",
+  "commands": [
+    {
+      "name": "verify",
+      "argv": [
+        "/tmp/pytitect-exact-8828767/.venv/bin/python3",
+        "tool/verify.py"
+      ],
+      "exitCode": 0,
+      "durationSeconds": 187.3003689420002
+    },
+    {
+      "name": "capacity",
+      "argv": [
+        "/tmp/pytitect-exact-8828767/.venv/bin/python3",
+        "-m",
+        "benchmarks.python.run",
+        "--output",
+        "/tmp/pytitect-evidence-8828767/capacity.json"
+      ],
+      "exitCode": 0,
+      "durationSeconds": 14.248947186002624
+    },
+    {
+      "name": "soak",
+      "argv": [
+        "/tmp/pytitect-exact-8828767/.venv/bin/python3",
+        "-m",
+        "benchmarks.python.run",
+        "--scenarios",
+        "soak",
+        "--duration",
+        "1800",
+        "--rate",
+        "20",
+        "--drain-timeout",
+        "120",
+        "--max-requests",
+        "100000",
+        "--output",
+        "/tmp/pytitect-evidence-8828767/soak.json"
+      ],
+      "exitCode": 0,
+      "durationSeconds": 1802.9856912500036
+    }
+  ],
+  "sourceCleanAfter": true,
+  "status": "passed"
+}

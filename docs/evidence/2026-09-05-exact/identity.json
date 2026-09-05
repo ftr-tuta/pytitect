@@ -1,0 +1,23 @@
+{
+  "bundles": {
+    "titect-message/1": {
+      "bundleDigest": "f1b9ef9f3d6677cc70ba589c3e086d75f6b5bb1250ac805aa193aafcc4326ef0",
+      "manifestSha256": "cea64ed78f34c1369a9193d96adfbb095f9ec9bc77919b4bec25a991011b280e"
+    },
+    "titect-message/2": {
+      "bundleDigest": "ba0dcee2d7c0e124973cf620e8c15b6f00ce96218fed7d85cc9e9ea1b4ff3694",
+      "manifestSha256": "935e3649fb652fb2f7de5bd3e9cc0bfdd5df79b19eec2211492cabbd0eeb0929"
+    },
+    "titect-sync/1": {
+      "bundleDigest": "70e72df17bc762b6466c878402bc9311a38c1524d7d73eaa49951299e95b1254",
+      "manifestSha256": "a03966a688a0c2721baabfb91a58e1c92a57e45a84d047ba71a1932c751e51f4"
+    }
+  },
+  "corpusDigest": "bb2caee81b30c81b69c528bc1dc0757b6388212d67e159b0f7e73fb0ed4e0a13",
+  "corpusSha256": "a16d96374b7d93d98b6a720db32b76ab9b6a260af2057ce1ec2a80fbed9f2424",
+  "original156Sha256": "4b8e07fd58687ef10b56bd34da890442aa925c67d142382f8c48feac04ba37dd",
+  "pythonSha": "8828767ed3f42cef674b9b096058cb969c9f233f",
+  "pythonVersion": "1.6.0rc1",
+  "schemaVersion": 1,
+  "scope": "Python runtime candidate; no paired or release acceptance"
+}

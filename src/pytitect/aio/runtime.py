@@ -41,7 +41,8 @@ from pytitect.messaging import (
     DeliveryRetry,
     DeliveryTerminated,
     JsonMessageCodec,
-    Message,
+    MessageCodec,
+    MessageValue,
     PublicationConfirmed,
     PublicationRetryable,
     PublicationUncertain,
@@ -73,7 +74,7 @@ class PermanentProcessingError(Exception):
     """A delivery failure eligible for durable quarantine."""
 
 
-type MessageHandler = Callable[[Message, HandlingContext], Decision | Awaitable[Decision]]
+type MessageHandler = Callable[[MessageValue, HandlingContext], Decision | Awaitable[Decision]]
 
 
 class AsyncCommandRuntime:
@@ -126,7 +127,7 @@ class RelaySummary:
 class AsyncRelay:
     def __init__(
         self,
-        store: AsyncOutboxStore[Message],
+        store: AsyncOutboxStore[MessageValue],
         publisher: AsyncPublisher,
         routes: RoutingTable,
         *,
@@ -201,7 +202,7 @@ class AsyncRelay:
         )
         iterator = iter(claims)
 
-        async def publish(claim: OutboxClaim[Message]) -> None:
+        async def publish(claim: OutboxClaim[MessageValue]) -> None:
             envelope = claim.envelope
             now = self._clock.now()
             self._observation.lag(envelope.occurred_at, now)
@@ -316,6 +317,7 @@ class AsyncConsumer:
         queue_capacity: int = 32,
         monotonic: Callable[[], float] = time.monotonic,
         max_message_bytes: int = 1024 * 1024,
+        codec: MessageCodec | None = None,
         max_retained_bytes: int = 40 * 1024 * 1024,
         observer: OperationalSink | None = None,
         metrics: MetricSink | None = None,
@@ -341,7 +343,7 @@ class AsyncConsumer:
         _positive_integer(max_retained_bytes, "max_retained_bytes")
         if max_message_bytes > max_retained_bytes:
             raise ValueError("retained byte budget must fit one maximum message")
-        self._codec = JsonMessageCodec()
+        self._codec = codec or JsonMessageCodec()
         self._max_message_bytes = max_message_bytes
         self._admitted = min(concurrency + queue_capacity, max_retained_bytes // max_message_bytes)
         self._observation = RuntimeObservation(RuntimeRole.CONSUMER, observer, metrics)

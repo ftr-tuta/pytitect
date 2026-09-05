@@ -18,6 +18,12 @@
       "maximum_characters": 512,
       "maximum_members": 32,
       "requires": "traceparent"
+    },
+    "sync_integrity": {
+      "wire_name": "Titect-Sync-Integrity",
+      "required": false,
+      "value": "integrity-sha-256-exact-json-v1",
+      "when_requested": "required unchanged on bootstrap and subsequent responses; no downgrade"
     }
   }
 }

@@ -10,7 +10,7 @@ from pytitect.aio.resilience import SettlementResult
 from pytitect.checkpoints import Checkpoint
 from pytitect.core import OpaqueId
 from pytitect.inbox import InboxDecision, InboxScope
-from pytitect.messaging import Message, PublicationResult
+from pytitect.messaging import MessageValue, PublicationResult
 from pytitect.outbox import OutboxAddResult, OutboxClaim, OutboxEnvelope
 
 
@@ -96,12 +96,12 @@ class AsyncCheckpointStore(Protocol):
 
 
 class AsyncPublisher(Protocol):
-    async def publish(self, *, destination: str, message: Message) -> PublicationResult: ...
+    async def publish(self, *, destination: str, message: MessageValue) -> PublicationResult: ...
 
 
 class AsyncDelivery(Protocol):
     @property
-    def message(self) -> Message: ...
+    def message(self) -> MessageValue: ...
 
     async def ack(self) -> None: ...
 

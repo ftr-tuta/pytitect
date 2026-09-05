@@ -18,6 +18,7 @@ RISK_FILES = {
     "src/pytitect/idempotency.py",
     "src/pytitect/leases.py",
     "src/pytitect/trace.py",
+    "src/pytitect/wire.py",
     "src/pytitect/security/canonical.py",
     "src/pytitect/security/digest.py",
     "src/pytitect/security/encoding.py",

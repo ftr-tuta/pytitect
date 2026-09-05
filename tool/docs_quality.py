@@ -125,6 +125,7 @@ def _stability(entry: str) -> str:
         "pytitect.aio",
         "pytitect.application",
         "pytitect.event_sourcing",
+        "pytitect.wire",
         "pytitect.jobs",
         "pytitect.messaging",
         "pytitect.operations",

@@ -5,6 +5,9 @@ on:
   pull_request:
     paths:
       - "src/pytitect/sqlalchemy/**"
+      - "src/pytitect/messaging/**"
+      - "src/pytitect/wire.py"
+      - "src/pytitect/sync/**"
       - "src/pytitect/django/**"
       - "tests/integration/**"
       - ".github/workflows/event-platform.yml"

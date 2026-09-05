@@ -110,10 +110,12 @@ class InMemoryAsyncOutboxStore[PayloadT]:
             return selected
 
     def _size(self, payload: PayloadT) -> int:
-        from pytitect.messaging import JsonMessageCodec, Message
+        from pytitect.messaging import ExactMessage, JsonMessageCodec, Message
 
         if self._payload_size is not None:
             return self._payload_size(payload)
+        if isinstance(payload, ExactMessage):
+            raise TypeError("exact messages require an explicit payload_size codec")
         if isinstance(payload, Message):
             return len(JsonMessageCodec().encode(payload))
         if isinstance(payload, bytes):

@@ -1290,3 +1290,26 @@ Tracker #34, paired interoperability #40 and partially delivered benchmark #43 r
 No Dartitect changes, merge, release, tag update or protection bypass is part of this delivery.
 The replacement PR records the final local and hosted verification results; those results are
 separate from the original documentation delivery evidence in <<delivery-validation>>.
+
+
+[[exact-wire-implementation]]
+=== Candidate exact wire and integrity implementation
+
+The historical audit and independent reliability evidence above remain tied to their original
+revisions. The candidate extension for #40 adds `pytitect.wire`, separately selected
+`titect-message/2`, bounded raw/streamed sync and message admission, and an optional negotiated
+`integrity-sha-256-exact-json-v1` policy. Existing `/1` binary64 decimal bytes and mapping APIs
+remain available. No default profile or binding is selected automatically.
+
+link:exact-wire.md[Exact wire contract and adoption] defines scalar ordering, unchanged numeric
+tokens, the full-envelope SHA-256 preimage and acknowledgement requirements. The authoritative
+`interop/conformance` corpus retains all 156 historical cases and adds explicit expectations;
+`tool/wire_conformance.py` runs raw boundaries. `tests/integration/test_exact_wire.py` exercises
+PostgreSQL byte persistence, JetStream relay/consumer preservation and unchanged database effects
+and checkpoints after integrity rejection. The new parsers remain within the existing risk and
+critical-path coverage floors.
+
+These Python checks do not close #40 or #43: updated committed Dart VM/Chrome conformance,
+all durable recovery extensions, paired reconnect/load evidence and the finite 30-minute soak
+must pass before capacity and interoperability acceptance. Candidate evidence is not release
+acceptance. The protected merge and integrated-SHA reruns remain pending; no release is included.

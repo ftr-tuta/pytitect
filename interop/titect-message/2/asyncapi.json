@@ -1,0 +1,20 @@
+{
+  "asyncapi": "3.1.0",
+  "info": {
+    "title": "Pytitect message components",
+    "version": "2.0.0",
+    "description": "Route- and topology-neutral titect-message/2 components"
+  },
+  "channels": {},
+  "operations": {},
+  "components": {
+    "messages": {
+      "TitectMessageV2": {
+        "name": "TitectMessageV2",
+        "title": "titect-message/2 envelope",
+        "contentType": "application/json",
+        "payload": {"$ref": "schema.json"}
+      }
+    }
+  }
+}

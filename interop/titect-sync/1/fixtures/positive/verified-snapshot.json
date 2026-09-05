@@ -1,0 +1,1 @@
+{"kind":"snapshot","payload":{"dataset_id":"d","generation":7,"integrity":{"algorithm":"sha-256","digest":"dc467f581b62f449f018c6107ee12af13bca743b6930683809963343e009fe11","item_count":1},"next_cursor":"next","upserts":[{"item_id":"a","revision":1,"value":{"n":1.0}}]},"protocol":"titect-sync/1"}

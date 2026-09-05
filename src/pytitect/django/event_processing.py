@@ -13,7 +13,7 @@ from pytitect.aio.resilience import SettlementResult
 from pytitect.application import HandlingContext
 from pytitect.core import OpaqueId
 from pytitect.django.relay import DjangoRelayStore
-from pytitect.messaging import Message
+from pytitect.messaging import MessageValue
 from pytitect.outbox import OutboxAddResult, OutboxClaim, OutboxEnvelope
 
 ResultT = TypeVar("ResultT")
@@ -81,7 +81,7 @@ class DjangoDeliveryQuarantined:
 type DjangoDeliveryResult = (
     DjangoDeliveryCommitted | DjangoDeliveryRetryable | DjangoDeliveryQuarantined
 )
-type DjangoMessageHandler = Callable[[Message, HandlingContext], DjangoDeliveryResult]
+type DjangoMessageHandler = Callable[[MessageValue, HandlingContext], DjangoDeliveryResult]
 
 
 class DjangoTransactionalConsumer:

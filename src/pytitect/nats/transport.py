@@ -8,7 +8,8 @@ from typing import Any, Protocol
 
 from pytitect.messaging import (
     JsonMessageCodec,
-    Message,
+    MessageCodec,
+    MessageValue,
     PublicationConfirmed,
     PublicationRejected,
     PublicationResult,
@@ -38,15 +39,13 @@ class NatsJetStreamPublisher:
 
     capabilities = NATS_CAPABILITIES
 
-    def __init__(
-        self, jetstream: JetStreamContext, *, codec: JsonMessageCodec | None = None
-    ) -> None:
+    def __init__(self, jetstream: JetStreamContext, *, codec: MessageCodec | None = None) -> None:
         self._jetstream = jetstream
         self._codec = codec or JsonMessageCodec(
             max_envelope_bytes=NATS_CAPABILITIES.max_message_bytes
         )
 
-    async def publish(self, *, destination: str, message: Message) -> PublicationResult:
+    async def publish(self, *, destination: str, message: MessageValue) -> PublicationResult:
         if not destination:
             return PublicationRejected("destination is empty")
         try:
@@ -69,7 +68,7 @@ class NatsJetStreamPublisher:
 
 
 class NatsDelivery:
-    def __init__(self, raw_message: Any, *, codec: JsonMessageCodec | None = None) -> None:
+    def __init__(self, raw_message: Any, *, codec: MessageCodec | None = None) -> None:
         self._raw = raw_message
         self._codec = codec or JsonMessageCodec(
             max_envelope_bytes=NATS_CAPABILITIES.max_message_bytes
@@ -78,7 +77,7 @@ class NatsDelivery:
         self._settled = False
 
     @property
-    def message(self) -> Message:
+    def message(self) -> MessageValue:
         return self._message
 
     async def ack(self) -> None:
@@ -112,7 +111,7 @@ class NatsPullDeliverySource:
         subscription: PullSubscription,
         *,
         fetch_timeout: timedelta = timedelta(seconds=5),
-        codec: JsonMessageCodec | None = None,
+        codec: MessageCodec | None = None,
     ) -> None:
         if fetch_timeout <= timedelta(0):
             raise ValueError("fetch timeout must be positive")

@@ -12,8 +12,10 @@ from typing import Any
 
 from pytitect.core import JsonValue, canonical_json_bytes
 from pytitect.messaging import (
+    MESSAGE_PROFILE,
     JsonMessageCodec,
     Message,
+    MessageValue,
     PublicationConfirmed,
     PublicationRejected,
     PublicationResult,
@@ -21,6 +23,7 @@ from pytitect.messaging import (
     PublicationUncertain,
     TransportCapabilities,
 )
+from pytitect.wire import WireProfileError
 
 AWS_CAPABILITIES = TransportCapabilities(
     ordered_delivery=False,
@@ -63,11 +66,15 @@ class EventBridgePublisher:
         self._event_bus_name = event_bus_name
         self._executor = executor
         self._semaphore = asyncio.Semaphore(max_concurrency)
+        if codec is not None and codec.media_type != JsonMessageCodec.media_type:
+            raise WireProfileError()
         self._codec = codec or JsonMessageCodec(
             max_envelope_bytes=AWS_CAPABILITIES.max_message_bytes
         )
 
-    async def publish(self, *, destination: str, message: Message) -> PublicationResult:
+    async def publish(self, *, destination: str, message: MessageValue) -> PublicationResult:
+        if message.profile != MESSAGE_PROFILE:
+            return PublicationRejected("unsupported message profile for EventBridge")
         if destination != self._event_bus_name:
             return PublicationRejected("destination does not match the configured custom bus")
         detail = self._codec.encode(message).decode("utf-8")
@@ -124,6 +131,8 @@ class SqsDelivery:
         self._raw = raw_message
         self._executor = executor
         self._semaphore = semaphore
+        if codec is not None and codec.media_type != JsonMessageCodec.media_type:
+            raise WireProfileError()
         self._codec = codec or JsonMessageCodec(
             max_envelope_bytes=AWS_CAPABILITIES.max_message_bytes
         )

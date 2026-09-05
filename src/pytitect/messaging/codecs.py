@@ -2,13 +2,28 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Iterable, Mapping
+from dataclasses import replace
 from types import MappingProxyType
-from typing import Protocol, cast
+from typing import Protocol
 
 from pytitect.core import JsonValue, Limits, canonical_json_bytes, validate_json
-from pytitect.messaging.model import Message, format_message_time, parse_message_time
+from pytitect.messaging.exact import MessageValue, _message_arguments, _metadata
+from pytitect.messaging.model import (
+    MESSAGE_PROFILE,
+    Message,
+    format_message_time,
+    parse_message_time,
+)
+from pytitect.wire import (
+    WireDocument,
+    WireError,
+    WireProfileError,
+    WireShapeError,
+    _legacy_value,
+    _ordinary,
+    decode_wire_stream,
+)
 
 MESSAGE_FIELDS = frozenset(
     {
@@ -35,9 +50,9 @@ class MessageCodec(Protocol):
     @property
     def media_type(self) -> str: ...
 
-    def encode(self, message: Message) -> bytes: ...
+    def encode(self, message: MessageValue) -> bytes: ...
 
-    def decode(self, payload: bytes) -> Message: ...
+    def decode(self, payload: bytes) -> MessageValue: ...
 
 
 class JsonMessageCodec:
@@ -57,7 +72,9 @@ class JsonMessageCodec:
         self._limits = limits or Limits()
         self._max_envelope_bytes = max_envelope_bytes
 
-    def encode(self, message: Message) -> bytes:
+    def encode(self, message: MessageValue) -> bytes:
+        if not isinstance(message, Message):
+            raise WireProfileError()
         document: dict[str, JsonValue] = {
             "id": message.id,
             "source": message.source,
@@ -75,47 +92,55 @@ class JsonMessageCodec:
         if message.causationid is not None:
             document["causationid"] = message.causationid
         validate_json(document, limits=self._limits)
-        encoded = canonical_json_bytes(document)
+        try:
+            encoded = canonical_json_bytes(document)
+        except ValueError:
+            # Preserve legacy formatting for arbitrarily long integer tokens.
+            encoded = WireDocument(
+                _legacy_value(document),
+                limits=replace(self._limits, max_body_bytes=self._max_envelope_bytes),
+            ).encode()
         if len(encoded) > self._max_envelope_bytes:
             raise ValueError("encoded message exceeds max_envelope_bytes")
         return encoded
 
     def decode(self, payload: bytes) -> Message:
-        if len(payload) > self._max_envelope_bytes:
-            raise ValueError("encoded message exceeds max_envelope_bytes")
+        """Decode through the bounded parser with legacy ValueError compatibility."""
+
         try:
-            document = json.loads(
-                payload,
-                parse_constant=_reject_constant,
-            )
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise ValueError("message must be valid UTF-8 JSON") from exc
-        if not isinstance(document, dict):
-            raise ValueError("message must be a JSON object")
-        keys = set(document)
-        if not keys >= REQUIRED_MESSAGE_FIELDS or not keys <= MESSAGE_FIELDS:
-            raise ValueError("message fields do not match the closed profile")
-        validate_json(cast(JsonValue, document), limits=self._limits)
-        for name in REQUIRED_MESSAGE_FIELDS - {"data"}:
-            if not isinstance(document[name], str):
-                raise ValueError(f"message {name} must be a string")
-        for name in ("correlationid", "causationid"):
-            if name in document and not isinstance(document[name], str):
-                raise ValueError(f"message {name} must be a string")
-        return Message(
-            id=document["id"],
-            source=document["source"],
-            specversion=document["specversion"],
-            type=document["type"],
-            subject=document["subject"],
-            time=parse_message_time(document["time"]),
-            dataschema=document["dataschema"],
-            datacontenttype=document["datacontenttype"],
-            profile=document["profile"],
-            data=cast(JsonValue, document["data"]),
-            correlationid=document.get("correlationid"),
-            causationid=document.get("causationid"),
+            return self.decode_raw(payload)
+        except WireError as error:
+            message = {
+                "limits": "encoded message exceeds max_envelope_bytes or JSON allocation limits",
+                "shape": "message fields do not match the closed profile",
+                "syntax": "message must be valid UTF-8 JSON",
+                "precision": "JSON numbers must be finite",
+                "unsupported_profile": "unsupported message profile",
+            }[error.code]
+        raise ValueError(message)
+
+    def decode_raw(self, payload: bytes) -> Message:
+        """Preview typed raw boundary preserving /1's binary64 decimal behavior."""
+
+        return self.decode_stream((payload,))
+
+    def decode_stream(self, chunks: Iterable[bytes]) -> Message:
+        selected = replace(
+            self._limits, max_body_bytes=min(self._limits.max_body_bytes, self._max_envelope_bytes)
         )
+        document = decode_wire_stream(chunks, limits=selected)
+        metadata = _metadata(document, MESSAGE_PROFILE)
+        ordinary = _ordinary(document.value, checked=False)
+        assert isinstance(ordinary, dict)
+        try:
+            return Message(
+                **_message_arguments(metadata),
+                time=parse_message_time(metadata["time"]),
+                data=ordinary["data"],
+            )
+        except (ValueError, TypeError):
+            pass
+        raise WireShapeError()
 
 
 class CodecRegistry:
@@ -140,7 +165,3 @@ class CodecRegistry:
             return self._codecs[media_type]
         except KeyError as exc:
             raise LookupError(f"no codec registered for {media_type!r}") from exc
-
-
-def _reject_constant(value: str) -> JsonValue:
-    raise ValueError(f"non-finite JSON number is forbidden: {value}")

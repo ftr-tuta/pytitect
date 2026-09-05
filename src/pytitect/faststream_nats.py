@@ -7,13 +7,13 @@ from datetime import timedelta
 from typing import Any
 
 from pytitect.aio import AsyncConsumer
-from pytitect.messaging import DeliveryDisposition, JsonMessageCodec, Message
+from pytitect.messaging import DeliveryDisposition, JsonMessageCodec, MessageCodec, MessageValue
 
 
 class FastStreamNatsDelivery:
     def __init__(
         self,
-        message: Message,
+        message: MessageValue,
         *,
         acknowledge: Callable[[], Awaitable[None]],
         retry_delivery: Callable[[timedelta | None], Awaitable[None]],
@@ -26,7 +26,7 @@ class FastStreamNatsDelivery:
         self._settled = False
 
     @property
-    def message(self) -> Message:
+    def message(self) -> MessageValue:
         return self._message
 
     async def ack(self) -> None:
@@ -52,7 +52,7 @@ class FastStreamNatsDelivery:
 class FastStreamNatsAdapter:
     """Creates an unregistered handler; consumers own decorators and broker lifecycle."""
 
-    def __init__(self, consumer: AsyncConsumer, *, codec: JsonMessageCodec | None = None) -> None:
+    def __init__(self, consumer: AsyncConsumer, *, codec: MessageCodec | None = None) -> None:
         self._consumer = consumer
         self._codec = codec or JsonMessageCodec()
 

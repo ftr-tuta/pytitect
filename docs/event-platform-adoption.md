@@ -48,3 +48,6 @@ and then cancel remaining tasks; cancellation must propagate.
 
 See [independent reliability foundations](reliability-foundations.md) for current async adoption,
 implemented store inventory, live conformance and reproducible Python capacity validation.
+
+See [exact wire boundaries and explicit profile adoption](exact-wire.md) for Preview `/2`, legacy
+binary64 compatibility, bounded raw input, and negotiated page integrity.

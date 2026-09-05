@@ -16,3 +16,6 @@ The `titect-message/1` bundle defines the closed CloudEvents 1.0.2 message profi
 2020-12, route-neutral AsyncAPI 3.1 components, canonical fixtures, capabilities, and its own
 deterministic manifest. Run `python tool/message_bundle.py` to validate it. The `dart` directory
 contains a convenience copy for bilateral byte checks.
+
+See [exact wire boundaries and explicit profile adoption](../docs/exact-wire.md) for Preview `/2`, legacy
+binary64 compatibility, bounded raw input, and negotiated page integrity.

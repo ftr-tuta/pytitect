@@ -7,6 +7,11 @@ Semantic Versioning with the prerelease rules documented in `docs/versioning.md`
 
 ### Added
 
+- Preview immutable exact JSON tokens and raw/streamed sync/message boundaries with typed,
+  payload-free failures; explicit `titect-message/2` codec and normative bundle.
+- Optional `integrity-sha-256-exact-json-v1` page verification with explicit policy injection,
+  bootstrap acknowledgement and no downgrade; an authoritative 232-case raw conformance corpus.
+
 - Preview async idempotency/receipt and workflow ports, finite reference adapters and conformance
   harnesses; optional SQLAlchemy request, process/timer, job, event/snapshot, projection/rebuild and
   terminal-retention adapters with explicit consumer sessions, models and serialization.
@@ -18,6 +23,10 @@ Semantic Versioning with the prerelease rules documented in `docs/versioning.md`
 
 ### Changed
 
+- Preview messaging, relay, consumer admission and NATS accept explicitly injected codecs for
+  exact messages. SQLAlchemy byte serializers preserve the selected representation; EventBridge/SQS
+  reject unsupported exact selection. See [exact wire adoption](docs/exact-wire.md).
+
 - Preview consumers return typed delivery dispositions and propagate unexpected/uncertain failures.
   Async settlement checks current authority and takes an explicit transition timestamp. Uncertain
   publications require explicit reconciliation. See [adoption guidance](docs/reliability-foundations.md).
@@ -27,6 +36,10 @@ Semantic Versioning with the prerelease rules documented in `docs/versioning.md`
   columns; consumers own model adoption. Stable synchronous port signatures and `/1` remain intact.
 
 ### Fixed
+
+- Reject normalized invalid sync/message timestamps, oversized raw documents and duplicate-key
+  allocation attacks. Preserve arbitrary wire-budget integer tokens without process-wide settings.
+  Legacy `/1` binary64 decimal bytes remain unchanged; `/2` preserves original numeric tokens.
 
 - Saturate Stable retry arithmetic before overflow and reject non-finite configuration.
 - Sample time at persistent runtime transitions and fence expired work after queue/lock waits.

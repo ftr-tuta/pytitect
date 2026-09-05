@@ -1,11 +1,11 @@
 {
   "algorithm": "sha256",
-  "digest": "a5ff870bcc9185e78bac4c6470c7dd1febe1613c6daed664ac3871a356e118df",
+  "digest": "70e72df17bc762b6466c878402bc9311a38c1524d7d73eaa49951299e95b1254",
   "files": [
     {
       "path": "capabilities.json",
-      "sha256": "6725eb9634611e3887bd3fe9b895376efa5fd73ba99a1a32684d61d7c0da0447",
-      "size": 265
+      "sha256": "7d7f9159ca6f3607e4dc19cf6995a27c43d08f3c68298e1cdded2e9ad36ab0e5",
+      "size": 304
     },
     {
       "path": "fixtures/negative/documents.json",
@@ -43,9 +43,24 @@
       "size": 184
     },
     {
+      "path": "fixtures/positive/verified-delta.json",
+      "sha256": "ded68dc514194637f3a9310055954178336654691e552f31b0b35196548e5fd4",
+      "size": 311
+    },
+    {
+      "path": "fixtures/positive/verified-snapshot.json",
+      "sha256": "df08292dfd5d135d07bbfd6dbf95094e448d1d96c206f10297dc0b2466f6dbdb",
+      "size": 298
+    },
+    {
       "path": "headers.json",
-      "sha256": "55a7c358ed3a86d0806bfdcfea97c9b01183720a9be28298c0118e5a2cff5acf",
-      "size": 527
+      "sha256": "21449bbf75b421aa362174e45723d8f1181ad0f33d23d76de7ac6419613f5b3a",
+      "size": 774
+    },
+    {
+      "path": "integrity.json",
+      "sha256": "0da0c869d2ab23a03a02d3c2126a072b3dcce947091d4cab752f62afcf2d90ca",
+      "size": 542
     },
     {
       "path": "limits.json",

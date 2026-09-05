@@ -299,6 +299,8 @@ jobs:
       - run: >-
           uv run pytest --no-cov
           tests/test_messaging.py
+          tests/test_wire.py
+          tests/test_wire_conformance.py
           tests/test_aio_runtime.py
           tests/test_aws_adapter.py
           tests/test_nats_adapter.py
@@ -307,6 +309,7 @@ jobs:
           tests/test_event_sourcing_projections.py
           tests/test_fault_injection.py
       - run: uv run python tool/message_bundle.py
+      - run: uv run python tool/wire_conformance.py
       - run: uv run python tool/event_platform.py
 
   reliability:

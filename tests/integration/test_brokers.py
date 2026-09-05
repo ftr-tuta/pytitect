@@ -59,8 +59,11 @@ def test_jetstream_publish_receive_retry_ack_and_closed_connection():
             assert second.message == first.message
             await second.ack()
             await client.flush(timeout=3)
-            info = await js.consumer_info(identity, "test")
-            assert info.num_ack_pending == 0
+            # A transport flush is not a JetStream settlement confirmation.
+            deadline = time.monotonic() + 3
+            while (await js.consumer_info(identity, "test")).num_ack_pending:
+                assert time.monotonic() < deadline, "JetStream ACK was not settled"
+                await asyncio.sleep(0.01)
             await js.delete_stream(identity)
             created = False
             await client.close()

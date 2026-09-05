@@ -8,11 +8,12 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Protocol, cast
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pytitect.aio.quarantine import RejectedDelivery
+from pytitect.aio.resilience import SettlementResult
 from pytitect.checkpoints import Checkpoint
 from pytitect.core import OpaqueId
 from pytitect.inbox import (
@@ -110,6 +111,7 @@ class SQLAlchemyInboxStore:
                     self.model.message_id == str(message_id),
                 )
                 .with_for_update()
+                .execution_options(populate_existing=True)
             )
         ).scalar_one()
         if row.completed_at is not None:
@@ -129,16 +131,23 @@ class SQLAlchemyInboxStore:
         now: datetime,
     ) -> bool:
         _utc(now)
-        row = await self._locked(scope, message_id)
-        if (
-            row is None
-            or row.token != token
-            or row.completed_at is not None
-            or row.expires_at <= now
-        ):
-            return False
-        row.completed_at = now
-        return True
+        await self._locked(scope, message_id)
+        statement = (
+            update(self.model)
+            .where(
+                self.model.namespace == scope.namespace,
+                self.model.source == scope.source,
+                self.model.consumer == scope.consumer,
+                self.model.message_id == str(message_id),
+                self.model.token == token,
+                self.model.completed_at.is_(None),
+                self.model.expires_at > func.greatest(now, func.clock_timestamp()),
+            )
+            .values(completed_at=func.greatest(now, func.clock_timestamp()))
+            .returning(self.model.message_id)
+            .execution_options(synchronize_session=False)
+        )
+        return (await self.session.execute(statement)).scalar_one_or_none() is not None
 
     async def abandon(self, scope: InboxScope, message_id: OpaqueId[object], *, token: str) -> bool:
         row = await self._locked(scope, message_id)
@@ -158,6 +167,7 @@ class SQLAlchemyInboxStore:
                     self.model.message_id == str(message_id),
                 )
                 .with_for_update()
+                .execution_options(populate_existing=True)
             )
         ).scalar_one_or_none()
 
@@ -188,16 +198,33 @@ class SQLAlchemyOutboxStore[PayloadT]:
         return OutboxAdded() if added is not None else OutboxDuplicate()
 
     async def claim(
-        self, *, now: datetime, limit: int, claim_ttl: timedelta
+        self, *, now: datetime, limit: int, claim_ttl: timedelta, max_bytes: int | None = None
     ) -> Sequence[OutboxClaim[PayloadT]]:
         _utc(now)
         if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
             raise ValueError("claim limit must be a positive integer")
         if claim_ttl <= timedelta(0):
             raise ValueError("claim ttl must be positive")
-        rows = (
-            await self.session.execute(outbox_claim_statement(self.model, now=now, limit=limit))
-        ).scalars()
+        statement = outbox_claim_statement(self.model, now=now, limit=limit)
+        if max_bytes is not None:
+            if isinstance(max_bytes, bool) or max_bytes <= 0:
+                raise ValueError("max_bytes must be positive")
+            # Lock only bounded metadata first; never fetch a payload over the byte budget.
+            metadata = (
+                await self.session.execute(
+                    statement.with_only_columns(
+                        self.model.message_id, func.octet_length(self.model.payload)
+                    )
+                )
+            ).all()
+            identities = []
+            retained = 0
+            for identity, size in metadata:
+                if retained + size <= max_bytes:
+                    identities.append(identity)
+                    retained += size
+            statement = statement.where(self.model.message_id.in_(identities))
+        rows = (await self.session.execute(statement)).scalars()
         claims: list[OutboxClaim[PayloadT]] = []
         for row in rows:
             claim_id = uuid.uuid4().hex
@@ -207,53 +234,129 @@ class SQLAlchemyOutboxStore[PayloadT]:
             claims.append(OutboxClaim(claim_id, envelope, row.claimed_until))
         return claims
 
-    async def delivered(self, claim: OutboxClaim[PayloadT], *, at: datetime) -> bool:
-        _utc(at)
-        row = await self._claimed(claim)
-        if row is None:
-            return False
-        row.delivered_at = at
-        row.claim_id = None
-        row.claimed_until = None
-        return True
+    async def delivered(self, claim: OutboxClaim[PayloadT], *, at: datetime) -> SettlementResult:
+        return await self._settle(
+            claim, at=at, delivered_at=func.greatest(at, func.clock_timestamp())
+        )
 
-    async def retry(self, claim: OutboxClaim[PayloadT], *, available_at: datetime) -> bool:
+    async def retry(
+        self,
+        claim: OutboxClaim[PayloadT],
+        *,
+        available_at: datetime,
+        at: datetime,
+    ) -> SettlementResult:
         _utc(available_at)
-        row = await self._claimed(claim)
-        if row is None:
-            return False
-        row.attempt += 1
-        row.available_at = available_at
-        row.claim_id = None
-        row.claimed_until = None
-        return True
+        return await self._settle(
+            claim,
+            at=at,
+            available_at=available_at,
+            attempt=self.model.attempt + 1,
+        )
 
-    async def failed(self, claim: OutboxClaim[PayloadT], *, reason: str, at: datetime) -> bool:
-        _utc(at)
+    async def defer(
+        self,
+        claim: OutboxClaim[PayloadT],
+        *,
+        available_at: datetime,
+        at: datetime,
+    ) -> SettlementResult:
+        _utc(available_at)
+        result = await self._settle(claim, at=at, available_at=available_at)
+        return SettlementResult.DEFERRED if result else result
+
+    async def uncertain(
+        self,
+        claim: OutboxClaim[PayloadT],
+        *,
+        reason: str,
+        at: datetime,
+    ) -> SettlementResult:
+        if not reason:
+            raise ValueError("uncertainty reason must not be empty")
+        return await self._settle(claim, at=at, uncertain_at=at, uncertainty_reason=reason)
+
+    async def resolve_uncertain(
+        self,
+        message_id: OpaqueId[object],
+        *,
+        expected_at: datetime,
+        delivered: bool,
+        available_at: datetime,
+        at: datetime,
+    ) -> SettlementResult:
+        for stamp in (expected_at, available_at, at):
+            _utc(stamp)
+        statement = (
+            update(self.model)
+            .where(
+                self.model.message_id == str(message_id),
+                self.model.uncertain_at == expected_at,
+                self.model.delivered_at.is_(None),
+                self.model.failure_reason.is_(None),
+            )
+            .values(
+                uncertain_at=None,
+                uncertainty_reason=None,
+                delivered_at=at if delivered else None,
+                available_at=available_at,
+            )
+            .returning(self.model.message_id)
+            .execution_options(synchronize_session=False)
+        )
+        changed = (await self.session.execute(statement)).scalar_one_or_none()
+        return SettlementResult.APPLIED if changed is not None else SettlementResult.STALE
+
+    async def failed(
+        self,
+        claim: OutboxClaim[PayloadT],
+        *,
+        reason: str,
+        at: datetime,
+    ) -> SettlementResult:
         if not reason:
             raise ValueError("outbox failure reason must not be empty")
-        row = await self._claimed(claim)
-        if row is None:
-            return False
-        row.failure_reason = reason
-        row.failed_at = at
-        row.claim_id = None
-        row.claimed_until = None
-        return True
+        return await self._settle(
+            claim,
+            at=at,
+            failure_reason=reason,
+            failed_at=func.greatest(at, func.clock_timestamp()),
+        )
 
-    async def _claimed(self, claim: OutboxClaim[PayloadT]) -> Any | None:
-        return (
-            await self.session.execute(
-                select(self.model)
-                .where(
-                    self.model.message_id == str(claim.envelope.message_id),
-                    self.model.claim_id == claim.claim_id,
-                    self.model.delivered_at.is_(None),
-                    self.model.failure_reason.is_(None),
-                )
-                .with_for_update()
+    async def _settle(
+        self,
+        claim: OutboxClaim[PayloadT],
+        *,
+        at: datetime,
+        **values: Any,
+    ) -> SettlementResult:
+        _utc(at)
+        # UPDATE predicates can be evaluated before a wait on an unchanged row.
+        # Lock first, then evaluate expiry in a new statement under that lock.
+        await self.session.execute(
+            select(self.model.message_id)
+            .where(
+                self.model.message_id == str(claim.envelope.message_id),
             )
-        ).scalar_one_or_none()
+            .with_for_update()
+        )
+        statement = (
+            update(self.model)
+            .where(
+                self.model.message_id == str(claim.envelope.message_id),
+                self.model.claim_id == claim.claim_id,
+                self.model.claimed_until == claim.claimed_until,
+                self.model.claimed_until > func.greatest(at, func.clock_timestamp()),
+                self.model.delivered_at.is_(None),
+                self.model.failure_reason.is_(None),
+                self.model.uncertain_at.is_(None),
+            )
+            .values(**values, claim_id=None, claimed_until=None)
+            .returning(self.model.message_id)
+            .execution_options(synchronize_session=False)
+        )
+        changed = (await self.session.execute(statement)).scalar_one_or_none()
+        return SettlementResult.APPLIED if changed is not None else SettlementResult.STALE
 
     def _envelope(self, row: Any) -> OutboxEnvelope[PayloadT]:
         return OutboxEnvelope(
@@ -296,19 +399,24 @@ class SQLAlchemyCheckpointStore:
         expected: Checkpoint | None,
         checkpoint: Checkpoint,
     ) -> bool:
-        current = await self.load_for_update(stream)
-        if current != expected:
-            return False
-        if current is None:
-            self.session.add(self.model(stream=stream, checkpoint=checkpoint.value))
+        _stream(stream)
+        statement: Any
+        if expected is None:
+            statement = (
+                insert(self.model)
+                .values(stream=stream, checkpoint=checkpoint.value)
+                .on_conflict_do_nothing(index_elements=["stream"])
+                .returning(self.model.stream)
+            )
         else:
-            row = (
-                await self.session.execute(
-                    select(self.model).where(self.model.stream == stream).with_for_update()
-                )
-            ).scalar_one()
-            row.checkpoint = checkpoint.value
-        return True
+            statement = (
+                update(self.model)
+                .where(self.model.stream == stream, self.model.checkpoint == expected.value)
+                .values(checkpoint=checkpoint.value)
+                .returning(self.model.stream)
+                .execution_options(synchronize_session=False)
+            )
+        return (await self.session.execute(statement)).scalar_one_or_none() is not None
 
 
 class SQLAlchemyRejectedDeliveryStore:
@@ -348,6 +456,7 @@ def outbox_claim_statement(model: type[Any], *, now: datetime, limit: int) -> Se
             model.available_at <= now,
             model.delivered_at.is_(None),
             model.failure_reason.is_(None),
+            model.uncertain_at.is_(None),
             (model.claimed_until.is_(None) | (model.claimed_until <= now)),
         )
         .order_by(model.available_at, model.message_id)

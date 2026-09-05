@@ -149,7 +149,7 @@ class DjangoTransactionalOperation[ResultT, OutboxPayloadT]:
                 completed = self._idempotency.complete(
                     decision.token,
                     value,
-                    now=now,
+                    now=self._clock.now(),
                     retention_ttl=self._policy.result_retention_ttl,
                 )
                 if not isinstance(completed, ReservationCompleted):

@@ -11,7 +11,11 @@ restarts the HTTP/relay/consumer process on the same durable schema and JetStrea
 post-fault drain compares receipts, local effects, outbox and receiving inbox through new sessions.
 Seeds, package versions, platform, source identity and parameters are recorded.
 
-Use `--scenarios soak --duration 1800 --max-requests 100000` for a longer finite run. The initial
+Use `--scenarios soak --duration 1800 --rate 20 --drain-timeout 120 --max-requests 100000`
+for the scheduled finite run. The offered rate and bounded drain deadline are recorded choices,
+not a guaranteed sustainable capacity. Failed gates exit unsuccessfully and retain their JSON
+measurements (including pending durable work); unexpected scenario failures retain a failure entry.
+The initial
 assertions cover correctness and configured concurrency/task/connection bounds and a recorded
 512 MiB process RSS budget (override with `--max-rss-mib`), with no invented
 latency threshold. Reports retain latency percentiles, rejected/error categories, useful throughput,

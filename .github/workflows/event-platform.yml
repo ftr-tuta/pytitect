@@ -117,7 +117,7 @@ jobs:
           uv run python tool/integration_environment.py --services postgres,nats
           --record evidence/infrastructure.json --
           uv run python -m benchmarks.python.run --scenarios soak --duration 1800
-          --max-requests 100000 --output evidence/soak.json
+          --rate 20 --drain-timeout 120 --max-requests 100000 --output evidence/soak.json
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:

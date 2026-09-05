@@ -103,6 +103,7 @@ async def scenario(args, name):
             latencies = []
             accepted = []
             peaks = Counter()
+            failures = []
             count = min(args.max_requests, max(1, int(args.duration * offered_rate)))
             queue = asyncio.Queue(args.concurrency * 2)
             started = time.monotonic()
@@ -187,7 +188,7 @@ async def scenario(args, name):
                     elapsed = time.monotonic() - started
                     # Bounded recovery drain; examine durable facts through new connections.
                     recovery_started = time.monotonic()
-                    deadline = recovery_started + 20
+                    deadline = recovery_started + args.drain_timeout
                     while True:
                         async with db.sessions() as session:
                             pending = await session.scalar(
@@ -206,10 +207,11 @@ async def scenario(args, name):
                         if pending == 0 and committed == useful:
                             break
                         if time.monotonic() >= deadline:
-                            raise AssertionError(
+                            failures.append(
                                 f"recovery drain failed: pending={pending}, "
                                 f"committed={committed}, useful={useful}"
                             )
+                            break
                         await asyncio.sleep(0.05)
                     recovery_seconds = time.monotonic() - recovery_started
                     for identity in accepted[:10]:
@@ -220,16 +222,21 @@ async def scenario(args, name):
                 effects = await session.scalar(select(func.count()).select_from(Effect))
                 rows = await session.scalar(select(func.count()).select_from(Outbox))
                 retries = await session.scalar(select(func.coalesce(func.sum(Outbox.attempt), 0)))
-            assert sum(statuses.values()) == count
-            assert effects == 2 * committed and rows == committed == useful
-            assert (
+            if sum(statuses.values()) != count:
+                failures.append("offered requests are not fully accounted for")
+            if effects != 2 * committed or rows != committed or committed != useful:
+                failures.append("durable receipt/effect/outbox/inbox counts do not reconcile")
+            if not (
                 peaks["connections"] <= 8
                 and peaks["tasks"] <= 100
                 and peaks["active_requests"] <= 8
                 and 0 < peaks["rss_kib"] <= args.max_rss_mib * 1024
-            )
+            ):
+                failures.append("configured process resource budget exceeded")
             return {
                 "scenario": name,
+                "passed": not failures,
+                "failures": failures,
                 "seed": args.seed,
                 "offered": count,
                 "statuses": dict(statuses),
@@ -250,6 +257,7 @@ async def scenario(args, name):
                     "outbox": rows,
                     "inbox": useful,
                     "publication_retries": int(retries),
+                    "pending_outbox": pending,
                 },
                 "load_generator": {
                     "workers": args.concurrency,
@@ -279,6 +287,7 @@ def main():
     parser.add_argument("--max-requests", type=int, default=10000)
     parser.add_argument("--seed", type=int, default=41)
     parser.add_argument("--max-rss-mib", type=int, default=512)
+    parser.add_argument("--drain-timeout", type=float, default=20)
     parser.add_argument("--output", type=Path, default=Path("/tmp/pytitect-capacity.json"))
     args = parser.parse_args()
     if (
@@ -287,12 +296,24 @@ def main():
         or not 1 <= args.concurrency <= 64
         or not 1 <= args.max_requests <= 1000000
         or not 1 <= args.max_rss_mib <= 1048576
+        or not 0 < args.drain_timeout <= 600
     ):
         parser.error("finite positive duration, rate, concurrency and request limits are required")
     names = args.scenarios.split(",")
     if set(names) - {"offered", "saturation", "recovery", "soak"}:
         parser.error("unknown scenario")
-    results = [asyncio.run(scenario(args, name)) for name in names]
+    results = []
+    for name in names:
+        try:
+            results.append(asyncio.run(scenario(args, name)))
+        except Exception as error:
+            results.append(
+                {
+                    "scenario": name,
+                    "passed": False,
+                    "failures": [f"{type(error).__name__}: {error}"],
+                }
+            )
     document = {
         "scope": "Python synthetic fixture; no paired client or global capacity claim",
         "seed": args.seed,
@@ -323,6 +344,8 @@ def main():
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(document, indent=2) + "\n")
+    if not all(result["passed"] for result in results):
+        raise SystemExit(f"Capacity gate failed; measurements retained: {args.output}")
     print(f"Capacity correctness and resource gates passed: {args.output}")
 
 

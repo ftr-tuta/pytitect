@@ -1,0 +1,181 @@
+{
+  "scope": "Python synthetic fixture; no paired client or global capacity claim",
+  "seed": 41,
+  "commit": "d964ad5f152f9403aa1d30fffc23d93bdb1ef370",
+  "source_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "python": "3.14.4 (main, Apr 20 2026, 16:06:56) [GCC 15.2.1 20260209]",
+  "platform": "Linux-7.2.3-arch1-2-x86_64-with-glibc2.44",
+  "cpu_count": 4,
+  "versions": {
+    "pytitect": "1.6.0rc1",
+    "SQLAlchemy": "2.0.52",
+    "psycopg": "3.3.5",
+    "nats-py": "2.15.0",
+    "fastapi": "0.141.1",
+    "uvicorn": "0.52.4",
+    "httpx": "0.28.1"
+  },
+  "parameters": {
+    "scenarios": "offered,saturation,recovery",
+    "duration": 2,
+    "rate": 50,
+    "concurrency": 16,
+    "max_requests": 10000,
+    "seed": 41,
+    "max_rss_mib": 512,
+    "drain_timeout": 20,
+    "output": "/tmp/pytitect-budget-final/capacity.json"
+  },
+  "results": [
+    {
+      "scenario": "offered",
+      "passed": true,
+      "failures": [],
+      "seed": 41,
+      "offered": 100,
+      "statuses": {
+        "201": 96,
+        "503": 4
+      },
+      "duration_seconds": 2.106490361999022,
+      "useful_operations": 96,
+      "useful_throughput": 33.022273924149,
+      "latency_seconds": {
+        "p50": 0.09702441099943826,
+        "p95": 0.1596812450006837,
+        "p99": 0.21577465000154916,
+        "max": 0.24054279299889458
+      },
+      "peak_observations": {
+        "retried": 0,
+        "uncertain": 0,
+        "useful": 96,
+        "accepted": 96,
+        "rejected": 4,
+        "tasks": 21,
+        "connections": 8,
+        "rss_kib": 117516,
+        "pending": 52,
+        "backlog_age_seconds": 1.239033,
+        "database_lock_waiters": 0,
+        "active_requests": 5,
+        "background_ok": true
+      },
+      "recovery_seconds": 0.8006383300016751,
+      "durable": {
+        "receipts": 96,
+        "effects": 192,
+        "outbox": 96,
+        "inbox": 96,
+        "publication_retries": 0,
+        "pending_outbox": 0
+      },
+      "load_generator": {
+        "workers": 16,
+        "queue_capacity": 32,
+        "offered_rate": 50
+      }
+    },
+    {
+      "scenario": "saturation",
+      "passed": true,
+      "failures": [],
+      "seed": 41,
+      "offered": 800,
+      "statuses": {
+        "503": 382,
+        "generator_rejected": 333,
+        "201": 85
+      },
+      "duration_seconds": 2.253191641997546,
+      "useful_operations": 85,
+      "useful_throughput": 27.164851550717366,
+      "latency_seconds": {
+        "p50": 0.13561126399872592,
+        "p95": 0.3571189799986314,
+        "p99": 0.4557270069999504,
+        "max": 0.6386588409950491
+      },
+      "peak_observations": {
+        "retried": 0,
+        "uncertain": 0,
+        "useful": 85,
+        "accepted": 85,
+        "rejected": 382,
+        "tasks": 26,
+        "connections": 8,
+        "rss_kib": 117756,
+        "pending": 56,
+        "backlog_age_seconds": 1.498818,
+        "database_lock_waiters": 0,
+        "active_requests": 8,
+        "background_ok": true
+      },
+      "recovery_seconds": 0.8758517780006514,
+      "durable": {
+        "receipts": 85,
+        "effects": 170,
+        "outbox": 85,
+        "inbox": 85,
+        "publication_retries": 0,
+        "pending_outbox": 0
+      },
+      "load_generator": {
+        "workers": 16,
+        "queue_capacity": 32,
+        "offered_rate": 400
+      }
+    },
+    {
+      "scenario": "recovery",
+      "passed": true,
+      "failures": [],
+      "seed": 41,
+      "offered": 100,
+      "statuses": {
+        "201": 44,
+        "RemoteProtocolError": 7,
+        "ReadError": 1,
+        "ConnectError": 48
+      },
+      "duration_seconds": 2.613790028000949,
+      "useful_operations": 45,
+      "useful_throughput": 15.024941899385283,
+      "latency_seconds": {
+        "p50": 0.031652279998525046,
+        "p95": 0.15001372999540763,
+        "p99": 0.17520880899974145,
+        "max": 0.21523185000114609
+      },
+      "peak_observations": {
+        "retried": 0,
+        "uncertain": 0,
+        "useful": 25,
+        "accepted": 42,
+        "rejected": 0,
+        "tasks": 22,
+        "connections": 8,
+        "rss_kib": 116868,
+        "pending": 22,
+        "backlog_age_seconds": 2.112348,
+        "database_lock_waiters": 0,
+        "active_requests": 7,
+        "background_ok": true
+      },
+      "recovery_seconds": 0.3812298729972099,
+      "durable": {
+        "receipts": 45,
+        "effects": 90,
+        "outbox": 45,
+        "inbox": 45,
+        "publication_retries": 0,
+        "pending_outbox": 0
+      },
+      "load_generator": {
+        "workers": 16,
+        "queue_capacity": 32,
+        "offered_rate": 50
+      }
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "scope": "Only the three containers created by final budget-fix verification",
+  "sourceSha": "d964ad5f152f9403aa1d30fffc23d93bdb1ef370",
+  "containers": [
+    {
+      "name": "pytitect-e33310b1d41a46aeaad8eb3431e33ff9-postgres",
+      "absent": true,
+      "inspectExitCode": 1,
+      "inspectError": "error: no such object: pytitect-e33310b1d41a46aeaad8eb3431e33ff9-postgres"
+    },
+    {
+      "name": "pytitect-e33310b1d41a46aeaad8eb3431e33ff9-nats",
+      "absent": true,
+      "inspectExitCode": 1,
+      "inspectError": "error: no such object: pytitect-e33310b1d41a46aeaad8eb3431e33ff9-nats"
+    },
+    {
+      "name": "pytitect-e33310b1d41a46aeaad8eb3431e33ff9-localstack",
+      "absent": true,
+      "inspectExitCode": 1,
+      "inspectError": "error: no such object: pytitect-e33310b1d41a46aeaad8eb3431e33ff9-localstack"
+    }
+  ],
+  "passed": true
+}

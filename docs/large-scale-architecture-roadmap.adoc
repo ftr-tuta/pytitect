@@ -1325,3 +1325,10 @@ link:evidence/2026-09-05-exact/README.md[Candidate measurements, checksums and l
 identities and the failed hosted paired gate. The required paired job currently rejects the old
 Dart corpus; updated committed Dart evidence is still required before merge or closure of #40,
 #43 and #34. This is Python capacity evidence, not completed paired client acceptance.
+
+The final codec-budget correction at `d964ad5f152f9403aa1d30fffc23d93bdb1ef370` passed the full
+383-test gate, all 16 wheel installation combinations and another representative capacity run.
+It aligns parsing and encoding when the consumer explicitly changes the envelope budget;
+default budgets and wire bundle/corpus hashes are unchanged. Its reports and cleanup observations
+are included with the candidate evidence. The earlier soak remains pinned to its tested source,
+and paired acceptance remains pending.

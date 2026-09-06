@@ -1,6 +1,6 @@
 # Exact wire candidate evidence — 2026-09-05
 
-The runtime source is `8828767ed3f42cef674b9b096058cb969c9f233f` (`1.6.0rc1`), executed from
+The soak runtime source is `8828767ed3f42cef674b9b096058cb969c9f233f` (`1.6.0rc1`), executed from
 an isolated clean checkout on CPython 3.13.13. [identity.json](identity.json) records corpus and
 bundle hashes. All 156 original inputs are preserved; the authoritative corpus contains 232 cases.
 [verification.json](verification.json) records successful command exits, durations and clean source
@@ -41,6 +41,25 @@ with warnings treated as errors. Existing coverage floors were unchanged.
 [final-verification.json](final-verification.json) and
 [final-verification-infrastructure.json](final-verification-infrastructure.json) record this check.
 
+The final runtime correction at `d964ad5f152f9403aa1d30fffc23d93bdb1ef370` makes both message codecs
+honor an explicitly enlarged envelope budget during parsing; an explicitly smaller wire limit
+also constrains encoding. Two regression cases cover payloads above the default 1 MiB budget.
+This changes the SDK source after the soak candidate; the default budget and all corpus/bundle
+identities are unchanged. The soak report remains pinned to its actual tested revision.
+[Budget-fix verification](budget-fix-verification.json) and its [gate summary](budget-fix-gate.json)
+record a clean committed-source full gate: 383 tests, one manual AWS test deselected, all 16
+isolated installations, builds and the same coverage percentages and floors as the preceding run.
+
+[Budget-fix capacity](budget-fix-capacity.json) passed offered, saturation and recovery scenarios
+again, with 1,000 requests and all response/error categories recorded. The respective durable
+useful operation counts were 96, 85 and 45, with zero pending outbox after each finite drain.
+Recovery returned 44 HTTP 201 responses for 45 durable operations: one operation committed while
+its response was lost during process termination. The report preserves that uncertainty rather
+than equating responses with commits. [Infrastructure](budget-fix-infrastructure.json) records
+the exact images; [cleanup](budget-fix-cleanup.json) confirms that these three additional containers
+were absent after execution. Together with the preceding cleanup report, all 18 temporary
+verification/capacity containers were removed.
+
 These runs used a shared development host; other verification processes ran during the soak.
 Sampled peaks can miss short bursts, and these synthetic results are not a reviewed production
 latency baseline or a global capacity claim. Existing earlier failed budget/soak observations remain
@@ -54,6 +73,12 @@ and the separately scheduled hosted soak was skipped. The current Dart pin is
 `cd740acab63d540b6e8cdb562426d9c96fcfd55c`. Matching VM/Chrome conformance, all 24 required recovery
 scenarios and real-client reconnect/load evidence are still required. No merge, integrated Python
 SHA, issue closure, release or tag is claimed. Issues #40, #43 and #34 remain open.
+
+The [final runtime hosted run](budget-fix-ci-run.json) at `d964ad5` also had
+[23 successful checks](budget-fix-ci-checks.json), including PostgreSQL 15–18. Its paired job and
+Required aggregate failed on the same old-corpus mismatch; the hosted soak was skipped.
+[That failed artifact](budget-fix-paired-failed.json) and its
+[infrastructure identities](budget-fix-paired-infrastructure.json) are retained separately.
 
 [The initial cleanup inspection](cleanup-inspection-initial.json) failed because its absence
 matcher expected uppercase Docker error text. The final inspection also covers the six earlier precommit verification containers. Their

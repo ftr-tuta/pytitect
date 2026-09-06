@@ -1322,7 +1322,7 @@ rate of 20 requests/second, 120-second drain budget and resource limits were ret
 CI-only extension at `13ffcb8a048ad89f7b4739abd6da5764adfc3498` has an identical SDK source tree
 and passed the full 381-test local gate and all 16 wheel installation combinations.
 link:evidence/2026-09-05-exact/README.md[Candidate measurements, checksums and limits] records exact
-identities and the failed hosted paired gate. The required paired job currently rejects the old
+identities and the failed hosted paired gate. That historical paired job rejected the old
 Dart corpus; updated committed Dart evidence is still required before merge or closure of #40,
 #43 and #34. This is Python capacity evidence, not completed paired client acceptance.
 
@@ -1344,9 +1344,18 @@ Dart candidate `0c20cea16f87692d93eab507fee23cb3bfe63ad5` supplies the matching 
 24 recovery scenarios and real-client offered, saturation and reconnect capacity reports.
 link:https://github.com/ftr-tuta/dartitect/pull/29#issuecomment-5556297051[The Dart handoff]
 records local and hosted evidence against Python `d3f3dae4554e6abb8724cc00a23831c70f2451b8`,
-version `1.6.0rc1`. That evidence remains preliminary and ineligible for release. The initial Python
-pin selects this Dart candidate while its owner revises the preliminary Python pin to expect `1.6.0`.
-Python must then pin the resulting Dart commit and rerun its required paired candidate gate.
+version `1.6.0rc1`. That evidence remains preliminary and ineligible for release.
+
+The revised Dart candidate `181cd0c6e45c2cda95e4f31e87d2b376caed4680` expects Python `1.6.0`
+and retains `integrated: false`. Its
+link:https://github.com/ftr-tuta/dartitect/pull/29#issuecomment-5557392222[revised handoff]
+records matching 232-case outcomes, all 24 recovery scenarios and all three capacity scenarios
+against Python `262fed4294e68399a9111ccba18974b3dd9dd9ac`. Those reports retain that tested
+Python SHA and are distinct from fresh evidence for the Python commit that updates the Dart pin.
+The source-version mismatch is resolved; `interop/dart/candidate.json` now selects this revised
+Dart SHA with `mode: candidate`, `releaseEligible: false` and acceptance
+`awaiting-integrated-release-acceptance`. Python must rerun its required paired candidate gate
+from clean committed sources before protected merge.
 
 Normal protected merge requires fresh Python verification and all required checks. Final acceptance
 must use the resulting integrated Python SHA and successful CI push run, revised Dart integrated
@@ -1354,3 +1363,9 @@ evidence with `preliminary: false` and `releaseEligible: true`, expanded Python 
 and a new 30-minute soak at 20 offered requests/second with the unchanged 120-second drain budget.
 The protected GitHub Release workflow follows that acceptance. PyPI and TestPyPI remain disabled;
 #40, #43 and #34 remain open pending their complete Python and Dart criteria.
+Python sends the integrated SHA, version, corpus/bundle hashes and exact-SHA CI push-run link to the
+Dart owner immediately after that run succeeds. The Dart owner replaces its preliminary Python
+pin and reruns hosted final acceptance; Python's historical Dart candidate pin remains unchanged.
+Final admission uses Dart's existing final-evidence checker from the actual executed Dart SHA and
+tree with the recorded run ID and attempt. Candidate reports must never be relabeled as final
+acceptance, and historical soak and failed reports remain unchanged.

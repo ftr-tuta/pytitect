@@ -1,10 +1,12 @@
 # Candidate paired harness contract
 
 The current `candidate.json` pins the committed Dart candidate with the authoritative Python corpus
-and required harness extensions. Its preliminary Python pin must also expect the stable package
-version `1.6.0` before fresh candidate evidence can pass. It is not an acceptance manifest. The Dart
-owner updates that preliminary pin; Python then pins the new committed Dart SHA and version. Never
-remove the paired job from `CI / Required` to merge a candidate.
+and required harness extensions. Dart `181cd0c6e45c2cda95e4f31e87d2b376caed4680` now expects
+Python `1.6.0`, resolving the earlier source-version mismatch. Its preliminary Python pin names
+`262fed4294e68399a9111ccba18974b3dd9dd9ac`; supplied reports retain that tested source identity.
+A fresh Python-owned candidate reference names the actual committed Python head that updates this
+Dart pin. It is not an acceptance manifest. Never remove the paired job from `CI / Required` to
+merge a candidate.
 
 Python executes `python -m tool.paired_gate --dart-root <clean checkout> --dart-sha <pin>
 --mode candidate --output <new directory>` with real `TEST_POSTGRES_DSN`, `TEST_NATS_URL` and
@@ -66,3 +68,10 @@ is introduced. The 30-minute soak remains a separately recorded required capacit
 
 Integrated mode verifies the Python source is reachable from fetched upstream `main`; final paired
 reports must name that integrated SHA. Protocol conformance alone never authorizes a release.
+After protected Python integration and successful CI push execution for that exact SHA, the Dart
+owner updates its preliminary Python pin and reruns hosted acceptance. Python's historical Dart
+candidate pin remains unchanged. Final admission uses Dart's final-evidence checker from the actual
+executed Dart SHA and tree, with the recorded GitHub run ID and attempt, and requires
+`preliminary: false` and `releaseEligible: true`. Python's candidate-only validators cannot admit
+final release evidence. Expanded Python and Security checks and a fresh 30-minute soak must also
+pass on the integrated Python SHA before the protected Release workflow is dispatched.

@@ -24,7 +24,7 @@ jobs:
         env:
           CANARY_ROLE: ${{ vars.AWS_CANARY_ROLE_ARN }}
         run: test -n "$CANARY_ROLE"
-      - uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v5.1.1
+      - uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v5.1.1
         with:
           role-to-assume: ${{ vars.AWS_CANARY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}

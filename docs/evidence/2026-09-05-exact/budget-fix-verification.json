@@ -1,0 +1,26 @@
+{
+  "sourceSha": "d964ad5f152f9403aa1d30fffc23d93bdb1ef370",
+  "commands": [
+    {
+      "name": "verify",
+      "argv": [
+        "/home/fabricio/Documentos/Projetos/pytitect/.venv/bin/python3",
+        "tool/verify.py"
+      ],
+      "exitCode": 0
+    },
+    {
+      "name": "capacity",
+      "argv": [
+        "/home/fabricio/Documentos/Projetos/pytitect/.venv/bin/python3",
+        "-m",
+        "benchmarks.python.run",
+        "--output",
+        "/tmp/pytitect-budget-final/capacity.json"
+      ],
+      "exitCode": 0
+    }
+  ],
+  "sourceCleanAfter": true,
+  "status": "passed"
+}

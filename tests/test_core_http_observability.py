@@ -29,7 +29,7 @@ from pytitect.observability import (
 def test_deadline_limits_context_and_runtime(  # type: ignore[no-untyped-def]
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from conftest import ManualClock
+    from tests.conftest import ManualClock
 
     clock = ManualClock()
     deadline = Deadline.after(timedelta(seconds=5), clock=clock)
@@ -78,7 +78,7 @@ def test_json_limits_and_invalid_values() -> None:
 
 
 def test_problem_renderer_is_configurable_and_reserved() -> None:
-    from conftest import ManualClock
+    from tests.conftest import ManualClock
 
     renderer = ProblemRenderer(
         "https://errors.example/",

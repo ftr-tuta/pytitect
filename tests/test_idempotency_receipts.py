@@ -34,7 +34,7 @@ from pytitect.receipts import (
 
 
 def test_idempotency_lifecycle_expiry_and_uncertain() -> None:
-    from conftest import ManualClock
+    from tests.conftest import ManualClock
 
     clock = ManualClock()
     store = InMemoryIdempotencyStore[dict[str, int]](capacity=2)

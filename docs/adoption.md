@@ -30,3 +30,6 @@ terminals, and expose legacy and versioned routes over one service.
 
 Run `uv run python tool/verify.py` before integration. The gate checks documentation, generated
 compatibility, protocol manifests, public API, isolated imports, coverage tiers, tests, and artifacts.
+
+See [exact wire boundaries and explicit profile adoption](exact-wire.md) for Preview `/2`, legacy
+binary64 compatibility, bounded raw input, and negotiated page integrity.

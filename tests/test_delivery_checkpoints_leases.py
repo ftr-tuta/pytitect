@@ -84,7 +84,7 @@ def test_inbox_duplicate_in_progress_abandon_and_expiry() -> None:
 
 
 def test_outbox_one_round_delivered_retry_and_permanent() -> None:
-    from conftest import ManualClock
+    from tests.conftest import ManualClock
 
     clock = ManualClock()
     store = InMemoryOutboxStore[str]()

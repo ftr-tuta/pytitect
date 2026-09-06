@@ -22,6 +22,8 @@ class InboxModelMixin:
 
 @declarative_mixin
 class OutboxModelMixin:
+    uncertain_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    uncertainty_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     message_id: Mapped[str] = mapped_column(String(255), nullable=False)
     topic: Mapped[str] = mapped_column(String(512), nullable=False)
     payload: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
@@ -84,6 +86,7 @@ class ProcessManagerModelMixin:
 
 @declarative_mixin
 class ProcessTimerModelMixin(LeaseColumnsMixin):
+    terminal: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     process_name: Mapped[str] = mapped_column(String(255), nullable=False)
     instance_id: Mapped[str] = mapped_column(String(255), nullable=False)
     timer_id: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -142,6 +145,7 @@ class ProjectionRebuildModelMixin:
 
 @declarative_mixin
 class EventModelMixin:
+    log_id: Mapped[str] = mapped_column(String(255), nullable=False)
     category: Mapped[str] = mapped_column(String(255), nullable=False)
     stream_id: Mapped[str] = mapped_column(String(255), nullable=False)
     stream_version: Mapped[int] = mapped_column(BigInteger, nullable=False)
@@ -155,8 +159,40 @@ class EventModelMixin:
 
 @declarative_mixin
 class SnapshotModelMixin:
+    log_id: Mapped[str] = mapped_column(String(255), nullable=False)
     category: Mapped[str] = mapped_column(String(255), nullable=False)
     stream_id: Mapped[str] = mapped_column(String(255), nullable=False)
     version: Mapped[int] = mapped_column(BigInteger, nullable=False)
     state: Mapped[dict[str, Any]] = mapped_column(nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+@declarative_mixin
+class IdempotencyModelMixin:
+    namespace: Mapped[str] = mapped_column(String(255), nullable=False)
+    subject: Mapped[str] = mapped_column(String(512), nullable=False)
+    operation: Mapped[str] = mapped_column(String(255), nullable=False)
+    key: Mapped[str] = mapped_column(String(512), nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    token: Mapped[str] = mapped_column(String(64), nullable=False)
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    result: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+@declarative_mixin
+class ReceiptModelMixin:
+    receipt_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    result: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    receipt_metadata: Mapped[dict[str, Any]] = mapped_column(nullable=False)
+
+
+@declarative_mixin
+class EventLogModelMixin:
+    log_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    position: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)

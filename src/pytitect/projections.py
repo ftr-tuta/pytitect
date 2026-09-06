@@ -78,7 +78,11 @@ class RebuildRun:
     def __post_init__(self) -> None:
         if not self.run_id or self.projection_version <= 0:
             raise ValueError("rebuild identity and projection version are required")
-        if self.through_position < 0 or self.next_position < 0 or self.batch_size <= 0:
+        if (
+            self.through_position < 0
+            or not 0 <= self.next_position <= self.through_position
+            or self.batch_size <= 0
+        ):
             raise ValueError("rebuild positions and batch size are invalid")
         validate_json(self.state)
 
@@ -128,6 +132,8 @@ class InMemoryProjectionStore:
             later.global_position <= earlier.global_position for earlier, later in pairwise(events)
         ):
             raise ValueError("projection events must be strictly ordered")
+        if events and events[0].global_position <= expected_checkpoint:
+            raise ValueError("projection checkpoint must not regress")
         with self._lock:
             current = self._states.get(key)
             actual_checkpoint = 0 if current is None else current.checkpoint
@@ -171,6 +177,20 @@ class InMemoryProjectionStore:
                 current is None
                 or current.status is not RebuildStatus.RUNNING
                 or current.next_position != expected_position
+            ):
+                return None
+            if (
+                not current.next_position <= next_position <= current.through_position
+                or complete != (next_position == current.through_position)
+            ):
+                raise ValueError("rebuild progress must respect its fixed watermark")
+            active = self._states.get(current.key)
+            if (
+                complete
+                and active is not None
+                and (
+                    active.checkpoint > next_position or active.version > current.projection_version
+                )
             ):
                 return None
             status = RebuildStatus.COMPLETED if complete else RebuildStatus.RUNNING
@@ -243,7 +263,9 @@ class ProjectionRuntime:
             state = definition.reduce(state, event)
             validate_json(state)
         next_position = run.next_position if not selected else selected[-1].global_position
-        complete = next_position >= run.through_position or not selected
+        complete = next_position == run.through_position
+        if not selected and not complete:
+            raise RuntimeError("rebuild watermark has missing durable coverage")
         advanced = self._store.advance_rebuild(
             run_id,
             expected_position=run.next_position,

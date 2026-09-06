@@ -2,6 +2,17 @@ name: Event platform expanded matrix
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - "src/pytitect/sqlalchemy/**"
+      - "src/pytitect/messaging/**"
+      - "src/pytitect/wire.py"
+      - "src/pytitect/sync/**"
+      - "src/pytitect/django/**"
+      - "tests/integration/**"
+      - ".github/workflows/event-platform.yml"
+  schedule:
+    - cron: "17 4 * * 1"
 
 permissions:
   contents: read
@@ -53,18 +64,14 @@ jobs:
         with:
           name: event-platform-candidate
           path: candidate-dist
-      - run: python -m pip install candidate-dist/*.whl "psycopg[binary]>=3.3.5,<4" pytest
+      - run: python -m pip install candidate-dist/*.whl "SQLAlchemy[asyncio]>=2.0.52,<2.1" "psycopg[binary]>=3.3.5,<4" "Django>=5.2.1,<6.2" "nats-py>=2.15,<3" boto3 pytest
       - env:
           TEST_POSTGRES_DSN: postgresql://postgres:postgres@localhost:5432/pytitect_event_platform
-        run: python -m pytest -o addopts='' -m postgres tests/test_postgresql_leases.py
+        run: python -m pytest -o addopts='' -m 'postgres and not nats' tests/test_postgresql_leases.py tests/integration
 
   nats:
     needs: candidate
     runs-on: ubuntu-24.04
-    services:
-      nats:
-        image: nats:2.14.5
-        ports: ["4222:4222"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -74,20 +81,14 @@ jobs:
         with:
           name: event-platform-candidate
           path: candidate-dist
-      - run: python -m pip install candidate-dist/*.whl "nats-py>=2.15,<3" pytest
+      - run: python -m pip install candidate-dist/*.whl "SQLAlchemy[asyncio]>=2.0.52,<2.1" "psycopg[binary]>=3.3.5,<4" "nats-py>=2.15,<3" boto3 pytest
       - run: >-
-          python -m pytest -o addopts=''
-          tests/test_nats_adapter.py tests/test_aio_runtime.py
+          python tool/integration_environment.py --services nats --
+          python -m pytest -o addopts='' -m nats tests/integration/test_brokers.py
 
   localstack:
     needs: candidate
     runs-on: ubuntu-24.04
-    services:
-      localstack:
-        image: localstack/localstack:4.14.0
-        env:
-          SERVICES: events,sqs
-        ports: ["4566:4566"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -97,12 +98,31 @@ jobs:
         with:
           name: event-platform-candidate
           path: candidate-dist
-      - run: python -m pip install candidate-dist/*.whl "boto3>=1.43.88,<2" pytest
-      - env:
-          AWS_ACCESS_KEY_ID: test
-          AWS_SECRET_ACCESS_KEY: test
-          AWS_DEFAULT_REGION: us-east-1
-          LOCALSTACK_ENDPOINT: http://localhost:4566
-        run: >-
-          python -m pytest -o addopts=''
-          tests/test_aws_adapter.py tests/test_fault_injection.py
+      - run: python -m pip install candidate-dist/*.whl "SQLAlchemy[asyncio]>=2.0.52,<2.1" "psycopg[binary]>=3.3.5,<4" "nats-py>=2.15,<3" "boto3>=1.43.88,<2" pytest
+      - run: >-
+          python tool/integration_environment.py --services localstack --
+          python -m pytest -o addopts='' -m localstack tests/integration/test_brokers.py
+
+  soak:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.11.7"
+      - run: uv sync --all-extras --frozen
+      - run: >-
+          uv run python tool/integration_environment.py --services postgres,nats
+          --record evidence/infrastructure.json --
+          uv run python -m benchmarks.python.run --scenarios soak --duration 1800
+          --rate 20 --drain-timeout 120 --max-requests 100000 --output evidence/soak.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: python-soak-evidence
+          path: evidence/

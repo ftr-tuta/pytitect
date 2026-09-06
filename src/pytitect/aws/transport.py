@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 from collections.abc import AsyncIterator, Callable, Mapping
 from concurrent.futures import Executor
 from datetime import timedelta
@@ -11,14 +12,18 @@ from typing import Any
 
 from pytitect.core import JsonValue, canonical_json_bytes
 from pytitect.messaging import (
+    MESSAGE_PROFILE,
     JsonMessageCodec,
     Message,
+    MessageValue,
     PublicationConfirmed,
     PublicationRejected,
     PublicationResult,
     PublicationRetryable,
+    PublicationUncertain,
     TransportCapabilities,
 )
+from pytitect.wire import WireProfileError
 
 AWS_CAPABILITIES = TransportCapabilities(
     ordered_delivery=False,
@@ -61,11 +66,15 @@ class EventBridgePublisher:
         self._event_bus_name = event_bus_name
         self._executor = executor
         self._semaphore = asyncio.Semaphore(max_concurrency)
+        if codec is not None and codec.media_type != JsonMessageCodec.media_type:
+            raise WireProfileError()
         self._codec = codec or JsonMessageCodec(
             max_envelope_bytes=AWS_CAPABILITIES.max_message_bytes
         )
 
-    async def publish(self, *, destination: str, message: Message) -> PublicationResult:
+    async def publish(self, *, destination: str, message: MessageValue) -> PublicationResult:
+        if message.profile != MESSAGE_PROFILE:
+            return PublicationRejected("unsupported message profile for EventBridge")
         if destination != self._event_bus_name:
             return PublicationRejected("destination does not match the configured custom bus")
         detail = self._codec.encode(message).decode("utf-8")
@@ -90,12 +99,18 @@ class EventBridgePublisher:
             return PublicationRejected(f"{code}: {message_text}"[:512])
         event_id = entries[0].get("EventId")
         if not event_id:
-            return PublicationRetryable("EventBridge response has no EventId")
+            return PublicationUncertain("EventBridge response has no EventId")
         return PublicationConfirmed(str(event_id))
 
     async def _call[ResultT](self, operation: Callable[[], ResultT]) -> ResultT:
-        async with self._semaphore:
-            return await asyncio.get_running_loop().run_in_executor(self._executor, operation)
+        await self._semaphore.acquire()
+        try:
+            future = asyncio.get_running_loop().run_in_executor(self._executor, operation)
+        except BaseException:
+            self._semaphore.release()
+            raise
+        future.add_done_callback(lambda completed: self._semaphore.release())
+        return await asyncio.shield(future)
 
 
 class SqsDelivery:
@@ -116,6 +131,8 @@ class SqsDelivery:
         self._raw = raw_message
         self._executor = executor
         self._semaphore = semaphore
+        if codec is not None and codec.media_type != JsonMessageCodec.media_type:
+            raise WireProfileError()
         self._codec = codec or JsonMessageCodec(
             max_envelope_bytes=AWS_CAPABILITIES.max_message_bytes
         )
@@ -134,7 +151,7 @@ class SqsDelivery:
         self._unsettled()
         if delay is None:
             return
-        seconds = int(delay.total_seconds())
+        seconds = math.ceil(delay.total_seconds())
         if delay < timedelta(0) or seconds > 43_200:
             raise ValueError("SQS visibility delay must be between 0 and 43200 seconds")
         await self._call(
@@ -161,8 +178,14 @@ class SqsDelivery:
         self._settled = True
 
     async def _call[ResultT](self, operation: Callable[[], ResultT]) -> ResultT:
-        async with self._semaphore:
-            return await asyncio.get_running_loop().run_in_executor(self._executor, operation)
+        await self._semaphore.acquire()
+        try:
+            future = asyncio.get_running_loop().run_in_executor(self._executor, operation)
+        except BaseException:
+            self._semaphore.release()
+            raise
+        future.add_done_callback(lambda completed: self._semaphore.release())
+        return await asyncio.shield(future)
 
     def _decode_body(self, body: str) -> Message:
         try:
@@ -227,10 +250,16 @@ class SqsDeliverySource:
         }
         if self._visibility_timeout is not None:
             arguments["VisibilityTimeout"] = int(self._visibility_timeout.total_seconds())
-        async with self._semaphore:
-            response = await asyncio.get_running_loop().run_in_executor(
+        await self._semaphore.acquire()
+        try:
+            future = asyncio.get_running_loop().run_in_executor(
                 self._executor, lambda: self._client.receive_message(**arguments)
             )
+        except BaseException:
+            self._semaphore.release()
+            raise
+        future.add_done_callback(lambda completed: self._semaphore.release())
+        response = await asyncio.shield(future)
         for raw in response.get("Messages", []):
             yield SqsDelivery(
                 self._client,
@@ -245,6 +274,10 @@ class SqsDeliverySource:
 def classify_aws_error(error: Exception) -> PublicationResult:
     response = getattr(error, "response", {})
     code = str(response.get("Error", {}).get("Code", type(error).__name__))
-    if isinstance(error, (TimeoutError, ConnectionError, OSError)) or code in _RETRYABLE_CODES:
+    if isinstance(error, (TimeoutError, ConnectionError, OSError)) or any(
+        marker in code.lower() for marker in ("timeout", "connection")
+    ):
+        return PublicationUncertain(code)
+    if code in _RETRYABLE_CODES:
         return PublicationRetryable(code)
     return PublicationRejected(code)

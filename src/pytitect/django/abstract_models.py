@@ -86,6 +86,16 @@ class AbstractOutboxModel(models.Model):
         abstract = True
 
 
+class AbstractRelayOutboxModel(AbstractOutboxModel):
+    """Preview outbox shape retaining uncertain publications for explicit reconciliation."""
+
+    uncertain_at: models.DateTimeField[datetime, datetime] = models.DateTimeField(null=True)
+    uncertainty_reason: models.TextField[str, str] = models.TextField(null=True)
+
+    class Meta:
+        abstract = True
+
+
 class AbstractCheckpointModel(models.Model):
     stream: models.CharField[str, str] = models.CharField(max_length=255)
     checkpoint: models.BinaryField[bytes, bytes] = models.BinaryField()

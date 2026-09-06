@@ -78,7 +78,11 @@ jobs:
             echo "TAG_EXISTS=false" >> "$GITHUB_ENV"
           fi
       - run: uv sync --all-extras --frozen
-      - run: uv run python tool/verify.py --skip-build
+      - name: Verify with real release-test infrastructure
+        run: >-
+          uv run python tool/integration_environment.py
+          --record "${{ runner.temp }}/release-infrastructure.json" --
+          uv run python tool/verify.py --skip-build
       - name: Extract this version's release notes
         run: uv run python tool/release_notes.py --version "$VERSION" --output release-notes.md
       - name: Build release artifacts once

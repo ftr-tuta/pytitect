@@ -1,0 +1,28 @@
+{
+  "run_id": "4fef38aea37b483795edce2d6300a356",
+  "services": {
+    "postgres": {
+      "image": "postgres:16",
+      "image_id": "sha256:80f4c7a5e91618546dce5b4fe60cf03b14c0f9efa7e40157278d122772ced8d2"
+    },
+    "nats": {
+      "image": "nats:2.14.5",
+      "image_id": "sha256:aaa84cbc4019766ed253d3f677ca8964ae28935e5d20c1ac620a5ca5a9167859"
+    }
+  },
+  "command": [
+    "uv",
+    "run",
+    "python",
+    "-m",
+    "tool.paired_gate",
+    "--dart-root",
+    "/home/runner/work/_temp/dartitect-candidate",
+    "--dart-sha",
+    "cd740acab63d540b6e8cdb562426d9c96fcfd55c",
+    "--mode",
+    "candidate",
+    "--output",
+    "/home/runner/work/_temp/paired-evidence"
+  ]
+}

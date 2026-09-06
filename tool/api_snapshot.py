@@ -43,6 +43,7 @@ MODULES = (
     "pytitect.sync",
     "pytitect.trace",
     "pytitect.testing",
+    "pytitect.wire",
 )
 
 

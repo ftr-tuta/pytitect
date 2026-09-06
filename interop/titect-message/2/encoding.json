@@ -1,0 +1,27 @@
+{
+  "encoding": "UTF-8",
+  "bom": false,
+  "separators": [
+    ",",
+    ":"
+  ],
+  "objectOrdering": "Unicode scalar lexicographic",
+  "unicodeNormalization": false,
+  "numericTokens": "unchanged; exponent spelling and signed zero retained",
+  "escaping": {
+    "quote": "\\\"",
+    "backslash": "\\\\",
+    "shortControls": [
+      "\\b",
+      "\\f",
+      "\\n",
+      "\\r",
+      "\\t"
+    ],
+    "remainingControls": "lowercase four-digit \\u00xx",
+    "otherScalars": "literal"
+  },
+  "duplicateKeys": "last value wins; every occurrence charged",
+  "rootDepth": 0,
+  "aggregateValues": "root, containers and every child value; keys use string budget"
+}

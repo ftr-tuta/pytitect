@@ -1332,3 +1332,25 @@ It aligns parsing and encoding when the consumer explicitly changes the envelope
 default budgets and wire bundle/corpus hashes are unchanged. Its reports and cleanup observations
 are included with the candidate evidence. The earlier soak remains pinned to its tested source,
 and paired acceptance remains pending.
+
+[[stable-release-preparation]]
+=== Stable 1.6.0 release preparation
+
+PR #46 prepares package version `1.6.0`, its stable classifier and release manifest. The documented
+Preview APIs remain Preview in the stable package. Existing corpus and protocol-bundle bytes and
+hashes remain unchanged, and all earlier reports retain their actual source and execution identities.
+
+Dart candidate `0c20cea16f87692d93eab507fee23cb3bfe63ad5` supplies the matching 232-case corpus,
+24 recovery scenarios and real-client offered, saturation and reconnect capacity reports.
+link:https://github.com/ftr-tuta/dartitect/pull/29#issuecomment-5556297051[The Dart handoff]
+records local and hosted evidence against Python `d3f3dae4554e6abb8724cc00a23831c70f2451b8`,
+version `1.6.0rc1`. That evidence remains preliminary and ineligible for release. The initial Python
+pin selects this Dart candidate while its owner revises the preliminary Python pin to expect `1.6.0`.
+Python must then pin the resulting Dart commit and rerun its required paired candidate gate.
+
+Normal protected merge requires fresh Python verification and all required checks. Final acceptance
+must use the resulting integrated Python SHA and successful CI push run, revised Dart integrated
+evidence with `preliminary: false` and `releaseEligible: true`, expanded Python and Security workflows,
+and a new 30-minute soak at 20 offered requests/second with the unchanged 120-second drain budget.
+The protected GitHub Release workflow follows that acceptance. PyPI and TestPyPI remain disabled;
+#40, #43 and #34 remain open pending their complete Python and Dart criteria.

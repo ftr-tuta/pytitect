@@ -1,8 +1,9 @@
 # Event platform architecture
 
 Pytitect's event platform is a set of explicit, consumer-owned building blocks. The contracts and
-runtimes are Preview APIs during the 1.6 release-candidate series; framework and broker adapters are
-Low-level APIs; conformance harnesses are Testing APIs. The Stable 1.0 API remains unchanged.
+runtimes remain Preview APIs in the stable Pytitect 1.6.0 package; framework and broker adapters are
+Low-level APIs; conformance harnesses are Testing APIs. Package stability does not promote Preview
+APIs. The Stable 1.0 API remains unchanged.
 
 ## Ownership and boundaries
 
@@ -34,7 +35,7 @@ Consequently:
 NATS JetStream and AWS EventBridge-to-SQS preserve the same envelope, inbox, outbox, retry, and
 terminal-failure semantics. NATS can offer broker-side message-ID deduplication, but it does not
 replace the inbox. SQS Standard makes no ordering or broker-deduplication promise. Ordered profiles,
-direct SQS publication, RabbitMQ, and Kafka are not implemented in this release candidate.
+direct SQS publication, RabbitMQ, and Kafka are not implemented in this release.
 
 ## Envelope profile
 

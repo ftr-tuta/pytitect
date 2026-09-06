@@ -5,6 +5,8 @@ Semantic Versioning with the prerelease rules documented in `docs/versioning.md`
 
 ## Unreleased
 
+## 1.6.0 - 2026-09-06
+
 ### Added
 
 - Preview immutable exact JSON tokens and raw/streamed sync/message boundaries with typed,
@@ -23,6 +25,9 @@ Semantic Versioning with the prerelease rules documented in `docs/versioning.md`
 
 ### Changed
 
+- Promote the package version, classifier and release manifest to stable 1.6.0. The documented
+  Preview APIs remain Preview; see [API stability](docs/api-stability.md). GitHub Releases remains
+  the publication authority, and PyPI and TestPyPI remain disabled.
 - Preview messaging, relay, consumer admission and NATS accept explicitly injected codecs for
   exact messages. SQLAlchemy byte serializers preserve the selected representation; EventBridge/SQS
   reject unsupported exact selection. See [exact wire adoption](docs/exact-wire.md).

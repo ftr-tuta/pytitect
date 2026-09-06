@@ -1,9 +1,10 @@
 # Candidate paired harness contract
 
-The current `candidate.json` pins the last committed Dart source and deliberately cannot pass
-until that source incorporates the authoritative Python corpus and the required harness extensions.
-It is not an acceptance manifest. Update this pin to the Dart agent's committed SHA and version;
-never remove the paired job from `CI / Required` to merge a candidate.
+The current `candidate.json` pins the committed Dart candidate with the authoritative Python corpus
+and required harness extensions. Its preliminary Python pin must also expect the stable package
+version `1.6.0` before fresh candidate evidence can pass. It is not an acceptance manifest. The Dart
+owner updates that preliminary pin; Python then pins the new committed Dart SHA and version. Never
+remove the paired job from `CI / Required` to merge a candidate.
 
 Python executes `python -m tool.paired_gate --dart-root <clean checkout> --dart-sha <pin>
 --mode candidate --output <new directory>` with real `TEST_POSTGRES_DSN`, `TEST_NATS_URL` and

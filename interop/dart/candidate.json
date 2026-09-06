@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "dartSha": "cd740acab63d540b6e8cdb562426d9c96fcfd55c",
+  "dartSha": "0c20cea16f87692d93eab507fee23cb3bfe63ad5",
   "dartVersion": "1.2.0",
   "mode": "candidate",
-  "acceptance": "awaiting-matching-corpus-recovery-and-capacity",
+  "acceptance": "awaiting-stable-python-version-pin-and-fresh-candidate-evidence",
   "releaseEligible": false
 }

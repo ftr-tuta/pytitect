@@ -128,7 +128,7 @@ class ExactJsonMessageCodec:
             or max_envelope_bytes <= 0
         ):
             raise ValueError("max_envelope_bytes must be a positive integer")
-        selected = limits or Limits()
+        selected = limits or Limits(max_body_bytes=max_envelope_bytes)
         self._limits = replace(
             selected, max_body_bytes=min(selected.max_body_bytes, max_envelope_bytes)
         )

@@ -69,8 +69,8 @@ class JsonMessageCodec:
             or max_envelope_bytes <= 0
         ):
             raise ValueError("max_envelope_bytes must be a positive integer")
-        self._limits = limits or Limits()
-        self._max_envelope_bytes = max_envelope_bytes
+        self._limits = limits or Limits(max_body_bytes=max_envelope_bytes)
+        self._max_envelope_bytes = min(self._limits.max_body_bytes, max_envelope_bytes)
 
     def encode(self, message: MessageValue) -> bytes:
         if not isinstance(message, Message):

@@ -37,6 +37,7 @@ Semantic Versioning with the prerelease rules documented in `docs/versioning.md`
 
 ### Fixed
 
+- Honor explicitly configured message envelope byte budgets consistently on encoding and decoding.
 - Reject normalized invalid sync/message timestamps, oversized raw documents and duplicate-key
   allocation attacks. Preserve arbitrary wire-budget integer tokens without process-wide settings.
   Legacy `/1` binary64 decimal bytes remain unchanged; `/2` preserves original numeric tokens.

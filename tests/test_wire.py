@@ -568,3 +568,20 @@ def test_checked_decimal_conversion_is_independent_of_consumer_traps():
         with pytest.raises(WirePrecisionError):
             ExactNumber("1e9999999999999999999999999999").to_decimal()
         assert ExactNumber("1.00000000000000001").to_decimal() == Decimal("1.00000000000000001")
+
+
+@pytest.mark.parametrize("profile", [1, 2])
+def test_codec_round_trips_explicit_envelopes_above_the_default_byte_budget(profile):
+    raw = JsonMessageCodec(max_envelope_bytes=2_000_000).encode(message(data=["x" * 16_000] * 70))
+    assert 1_048_576 < len(raw) < 2_000_000
+    codec = JsonMessageCodec(max_envelope_bytes=2_000_000)
+    if profile == 2:
+        raw = raw.replace(b"titect-message/1", b"titect-message/2")
+        codec = ExactJsonMessageCodec(max_envelope_bytes=2_000_000)
+    assert codec.encode(codec.decode(raw)) == raw
+    assert codec.encode(codec.decode_stream([raw[:700_000], raw[700_000:]])) == raw
+    bounded = type(codec)(limits=Limits(max_body_bytes=len(raw) - 1), max_envelope_bytes=2_000_000)
+    with pytest.raises(ValueError):
+        bounded.decode(raw)
+    with pytest.raises(ValueError):
+        bounded.encode(codec.decode(raw))

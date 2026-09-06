@@ -39,6 +39,11 @@ full allocation budget before the last occurrence replaces earlier values. Decod
 count Unicode scalars. Cancellation and source failures propagate. Only finite, explicitly
 configured input is retained; the parser cannot limit memory already allocated by its producer.
 
+Message codecs use the configured `max_envelope_bytes` as their byte budget when `limits` is
+omitted. An explicitly supplied `Limits.max_body_bytes` can tighten it; encoding and decoding
+use the same effective minimum. A larger configured envelope does not silently fall back to
+the default 1 MiB parser budget.
+
 The typed errors have payload-free codes `syntax`, `limits`, `shape`, `unsupported_profile`,
 `integrity`, and `precision`. No payload excerpts are included in error messages or causes.
 `JsonMessageCodec.decode_raw()` and `.decode_stream()` expose those failures. `.decode()` keeps

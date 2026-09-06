@@ -13,6 +13,10 @@ Python executes `python -m tool.paired_gate --dart-root <clean checkout> --dart-
 `CHROME_EXECUTABLE`. Reusing an evidence directory fails, preserving previous failed reports.
 The gate aliases the service settings to `TITECT_POSTGRES_DSN` and `TITECT_NATS_URL` for the
 Dart-owned fixtures. The artifacts and services remain test-owned and outside the SDK wheel.
+Before recovery, it resolves `examples/django_reference` with its existing frozen lockfile and
+passes that isolated interpreter to the Dart driver. The fixture's `pytest-django` configuration
+and pinned Django dependencies are required; the SDK environment cannot substitute for them.
+Dependency-resolution failures retain `django-environment.log` and fail the paired gate.
 
 The gate verifies both clean committed sources, source versions, the full 232-case corpus,
 expectations, and all three bundle identities before execution. A candidate-reference JSON records

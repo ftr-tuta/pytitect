@@ -293,6 +293,23 @@ def main() -> int:
             timeout=300,
         )
         actor = native / "bundle/bin/native_actor"
+        django_root = ROOT / "examples" / "django_reference"
+        django_environment = django_root / ".venv"
+        run_stage(
+            [
+                "uv",
+                "sync",
+                "--project",
+                str(django_root),
+                "--frozen",
+                "--python",
+                sys.executable,
+            ],
+            cwd=ROOT,
+            env={**env, "UV_PROJECT_ENVIRONMENT": str(django_environment)},
+            log=args.output / "django-environment.log",
+            timeout=180,
+        )
         for name, validator in (("recovery", validate_recovery), ("capacity", validate_capacity)):
             stage_output = args.output / name
             stage_output.mkdir(exist_ok=True)
@@ -309,7 +326,7 @@ def main() -> int:
                 str(stage_output),
             ]
             if name == "recovery":
-                command.extend(["--django-python", sys.executable])
+                command.extend(["--django-python", str(django_environment / "bin" / "python")])
             run_stage(
                 command, cwd=args.dart_root, env=env, log=args.output / f"{name}.log", timeout=600
             )

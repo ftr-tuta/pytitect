@@ -42,6 +42,7 @@ Semantic Versioning with the prerelease rules documented in `docs/versioning.md`
 
 ### Fixed
 
+- Run paired Django recovery with the reference fixture's frozen isolated environment.
 - Provision disposable PostgreSQL, JetStream and LocalStack services for the Release workflow's
   full verification gate, using the same explicit infrastructure runner as CI.
 - Honor explicitly configured message envelope byte budgets consistently on encoding and decoding.

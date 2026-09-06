@@ -42,6 +42,8 @@ Semantic Versioning with the prerelease rules documented in `docs/versioning.md`
 
 ### Fixed
 
+- Provision disposable PostgreSQL, JetStream and LocalStack services for the Release workflow's
+  full verification gate, using the same explicit infrastructure runner as CI.
 - Honor explicitly configured message envelope byte budgets consistently on encoding and decoding.
 - Reject normalized invalid sync/message timestamps, oversized raw documents and duplicate-key
   allocation attacks. Preserve arbitrary wire-budget integer tokens without process-wide settings.

@@ -9,11 +9,10 @@ permissions:
 
 jobs:
   canary:
-    if: ${{ vars.AWS_CANARY_ROLE_ARN != '' }}
-    continue-on-error: true
     environment: aws-canary
     runs-on: ubuntu-24.04
     env:
+      PYTITECT_REAL_AWS: "1"
       AWS_REGION: ${{ vars.AWS_CANARY_REGION || 'us-east-1' }}
       RESOURCE_PREFIX: pytitect-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
@@ -21,6 +20,10 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
+      - name: Require explicit canary credentials
+        env:
+          CANARY_ROLE: ${{ vars.AWS_CANARY_ROLE_ARN }}
+        run: test -n "$CANARY_ROLE"
       - uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v5.1.1
         with:
           role-to-assume: ${{ vars.AWS_CANARY_ROLE_ARN }}
@@ -28,5 +31,5 @@ jobs:
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           version: "0.11.7"
-      - run: uv sync --extra aws --frozen
-      - run: uv run python -m pytest tests/test_aws_adapter.py
+      - run: uv sync --all-extras --frozen
+      - run: uv run python -m pytest --no-cov -m aws_live tests/integration/test_brokers.py

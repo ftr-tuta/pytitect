@@ -1,0 +1,82 @@
+{
+  "scope": "Python synthetic fixture; no paired client or global capacity claim",
+  "seed": 41,
+  "commit": "b54e68cda565e943cdf21a0503b1c7004e3c82ec",
+  "source_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "python": "3.14.4 (main, Apr 20 2026, 16:06:56) [GCC 15.2.1 20260209]",
+  "platform": "Linux-7.2.3-arch1-2-x86_64-with-glibc2.44",
+  "cpu_count": 4,
+  "versions": {
+    "pytitect": "1.6.0rc1",
+    "SQLAlchemy": "2.0.52",
+    "psycopg": "3.3.5",
+    "nats-py": "2.15.0",
+    "fastapi": "0.141.1",
+    "uvicorn": "0.52.4",
+    "httpx": "0.28.1"
+  },
+  "parameters": {
+    "scenarios": "offered",
+    "duration": 1.0,
+    "rate": 50,
+    "concurrency": 16,
+    "max_requests": 10000,
+    "seed": 41,
+    "max_rss_mib": 1,
+    "drain_timeout": 20,
+    "output": "/tmp/pytitect-failed-budget.json"
+  },
+  "results": [
+    {
+      "scenario": "offered",
+      "passed": false,
+      "failures": [
+        "configured process resource budget exceeded"
+      ],
+      "seed": 41,
+      "offered": 50,
+      "statuses": {
+        "503": 6,
+        "201": 44
+      },
+      "duration_seconds": 1.2392673029971775,
+      "useful_operations": 44,
+      "useful_throughput": 19.123374615630325,
+      "latency_seconds": {
+        "p50": 0.14613631600150256,
+        "p95": 0.2851890199999616,
+        "p99": 0.3166098130022874,
+        "max": 0.3436907629984489
+      },
+      "peak_observations": {
+        "retried": 0,
+        "uncertain": 0,
+        "useful": 44,
+        "accepted": 44,
+        "rejected": 6,
+        "tasks": 23,
+        "connections": 8,
+        "rss_kib": 116872,
+        "pending": 30,
+        "backlog_age_seconds": 1.195223,
+        "database_lock_waiters": 0,
+        "active_requests": 7,
+        "background_ok": true
+      },
+      "recovery_seconds": 1.0615818350015616,
+      "durable": {
+        "receipts": 44,
+        "effects": 88,
+        "outbox": 44,
+        "inbox": 44,
+        "publication_retries": 0,
+        "pending_outbox": 0
+      },
+      "load_generator": {
+        "workers": 16,
+        "queue_capacity": 32,
+        "offered_rate": 50
+      }
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "profile": "titect-message/2",
+  "cloudEvents": "1.0.2",
+  "delivery": "at-least-once",
+  "contentTypes": [
+    "application/json"
+  ],
+  "codecRegistryKey": "application/json;profile=\"titect-message/2\"",
+  "numberRepresentation": "unchanged JSON tokens",
+  "automaticSelection": false,
+  "transportEvidenceRequired": [
+    "postgresql-bytes",
+    "jetstream-bytes"
+  ],
+  "unsupportedTransports": [
+    "eventbridge-sqs-json-transformation"
+  ]
+}

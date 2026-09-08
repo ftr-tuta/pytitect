@@ -1,0 +1,21 @@
+{
+  "run_id": "732b1ce2d4584dc6852d49d56779463e",
+  "services": {
+    "postgres": {
+      "image": "postgres:17",
+      "image_id": "sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675"
+    }
+  },
+  "command": [
+    "uv",
+    "run",
+    "--no-sync",
+    "pytest",
+    "-o",
+    "addopts=",
+    "-m",
+    "postgres and not nats",
+    "tests/test_postgresql_leases.py",
+    "tests/integration"
+  ]
+}

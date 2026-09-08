@@ -17,3 +17,6 @@ metadata so the closed envelope stays interoperable across transports.
 At-least-once delivery is the only cross-transport promise. An implementation must survive duplicate
 delivery, crash after local commit but before ACK, crash after broker confirmation but before marking
 an outbox row delivered, expired claims, and stale fencing tokens.
+
+See [exact wire boundaries and explicit profile adoption](exact-wire.md) for Preview `/2`, legacy
+binary64 compatibility, bounded raw input, and negotiated page integrity.

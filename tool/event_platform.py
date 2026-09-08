@@ -41,6 +41,7 @@ def main() -> int:
         raise SystemExit("package AsyncAPI must remain route- and topology-neutral")
 
     expanded = (ROOT / ".github" / "workflows" / "event-platform.yml").read_text(encoding="utf-8")
+    expanded += (ROOT / "tool" / "integration_environment.py").read_text(encoding="utf-8")
     for required in (
         'postgres: ["15", "16", "17", "18"]',
         "nats:2.14.5",

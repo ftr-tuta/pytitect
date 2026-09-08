@@ -306,6 +306,8 @@ def parse_sync_timestamp(value: str) -> datetime:
     except ValueError as error:
         raise ValueError("timestamp is not a valid calendar instant") from error
     _wire_time(parsed, "timestamp")
+    if format_sync_timestamp(parsed) != value:
+        raise ValueError("timestamp is not an exact calendar representation")
     return parsed
 
 
@@ -335,6 +337,12 @@ def decode_sync_document(value: JsonValue, *, limits: SyncLimits | None = None) 
 
     selected = limits or DEFAULT_SYNC_LIMITS
     _document_bounds(value, selected)
+    return _decode_bounded_document(value, selected)
+
+
+def _decode_bounded_document(value: JsonValue, selected: SyncLimits) -> SyncDocument:
+    """Validate shape after a caller has enforced allocation and byte budgets."""
+
     envelope = _object(value, "document")
     _fields(envelope, {"protocol", "kind", "payload"}, "document")
     if _string(envelope["protocol"], "protocol") != SYNC_PROTOCOL:

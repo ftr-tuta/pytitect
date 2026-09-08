@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import threading
 import uuid
 from collections.abc import Callable, Sequence
@@ -109,14 +110,27 @@ class RetryPolicy:
     def __post_init__(self) -> None:
         if self.initial_delay <= timedelta(0) or self.maximum_delay <= timedelta(0):
             raise ValueError("retry delays must be positive")
-        if self.multiplier < 1 or self.max_attempts <= 0:
+        if (
+            not math.isfinite(self.multiplier)
+            or self.multiplier < 1
+            or isinstance(self.max_attempts, bool)
+            or not isinstance(self.max_attempts, int)
+            or self.max_attempts <= 0
+        ):
             raise ValueError("retry multiplier and max_attempts are invalid")
 
     def delay(self, attempt: int) -> timedelta:
-        if attempt < 1:
+        if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt < 1:
             raise ValueError("attempt must be at least one")
-        scaled = self.initial_delay * (self.multiplier ** (attempt - 1))
-        return min(scaled, self.maximum_delay)
+        if self.initial_delay >= self.maximum_delay:
+            return self.maximum_delay
+        if self.multiplier == 1:
+            return self.initial_delay
+        # Compare exponents before evaluating either the power or timedelta product.
+        ceiling = math.log(self.maximum_delay / self.initial_delay) / math.log(self.multiplier)
+        if attempt - 1 >= ceiling:
+            return self.maximum_delay
+        return min(self.initial_delay * self.multiplier ** (attempt - 1), self.maximum_delay)
 
 
 class OutboxStore(Protocol[PayloadT]):

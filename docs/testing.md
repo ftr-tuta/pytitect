@@ -12,3 +12,6 @@ independently of those percentages.
 Security tests should include published vectors and malformed encodings, duplicate claims, wrong
 context, time skew, replay, and payload limits. Package smoke tests must use clean environments for
 the core and every supported extras combination.
+
+See [independent reliability foundations](reliability-foundations.md) for current async adoption,
+implemented store inventory, live conformance and reproducible Python capacity validation.

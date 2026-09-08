@@ -53,7 +53,11 @@ class _SQLAlchemyUnitOfWork:
         self._finished = False
 
     async def __aenter__(self) -> _SQLAlchemyUnitOfWork:
-        await self._session.begin()
+        try:
+            await self._session.begin()
+        except BaseException:
+            await self._session.close()
+            raise
         return self
 
     async def __aexit__(

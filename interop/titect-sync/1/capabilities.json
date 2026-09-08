@@ -3,6 +3,7 @@
   "capabilities": [
     "delta",
     "integrity-sha-256",
+    "integrity-sha-256-exact-json-v1",
     "mutations",
     "receipts",
     "snapshot",

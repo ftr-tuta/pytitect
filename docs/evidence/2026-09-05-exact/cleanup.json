@@ -1,0 +1,106 @@
+{
+  "scope": "Only locally created verification/capacity containers and observed driver/soak processes",
+  "containers": [
+    {
+      "name": "pytitect-c7bf9c67bf664d6b88cc97c8d31a5f46-postgres",
+      "absent": true,
+      "inspectExitCode": 1,
+      "inspectError": "error: no such object: pytitect-c7bf9c67bf664d6b88cc97c8d31a5f46-postgres"
+    },
+    {
+      "name": "pytitect-c7bf9c67bf664d6b88cc97c8d31a5f46-nats",
+      "absent": true,
+      "inspectExitCode": 1,
+      "inspectError": "error: no such object: pytitect-c7bf9c67bf664d6b88cc97c8d31a5f46-nats"
+    },
+    {
+      "name": "pytitect-c7bf9c67bf664d6b88cc97c8d31a5f46-localstack",
+      "absent": true,
+      "inspectExitCode": 1,
+      "inspectError": "error: no such object: pytitect-c7bf9c67bf664d6b88cc97c8d31a5f46-localstack"
+    },
+    {
+      "name": "pytitect-58a926a109fd49b9987aa2dbdf5fb5e6-postgres",
+      "absent": true,
+      "inspectExitCode": 1,
+      "inspectError": "error: no such object: pytitect-58a926a109fd49b9987aa2dbdf5fb5e6-postgres"
+    },
+    {
+      "name": "pytitect-732b1ce2d4584dc6852d49d56779463e-postgres",
+      "absent": true,
+      "inspectExitCode": 1,
+      "inspectError": "error: no such object: pytitect-732b1ce2d4584dc6852d49d56779463e-postgres"
+    },
+    {
+      "name": "pytitect-d11c70454bcf42d1a4832be00d9c5d8e-postgres",
+      "absent": true,
+      "inspectExitCode": 1,
+      "inspectError": "error: no such object: pytitect-d11c70454bcf42d1a4832be00d9c5d8e-postgres"
+    },
+    {
+      "name": "pytitect-827d4b1a0e15446697c3bc3eac30785f-postgres",
+      "absent": true,
+      "inspectExitCode": 1,
+      "inspectError": "error: no such object: pytitect-827d4b1a0e15446697c3bc3eac30785f-postgres"
+    },
+    {
+      "name": "pytitect-827d4b1a0e15446697c3bc3eac30785f-nats",
+      "absent": true,
+      "inspectExitCode": 1,
+      "inspectError": "error: no such object: pytitect-827d4b1a0e15446697c3bc3eac30785f-nats"
+    },
+    {
+      "name": "pytitect-827d4b1a0e15446697c3bc3eac30785f-localstack",
+      "absent": true,
+      "inspectExitCode": 1,
+      "inspectError": "error: no such object: pytitect-827d4b1a0e15446697c3bc3eac30785f-localstack"
+    },
+    {
+      "name": "pytitect-9b714f00628e4270a398410e6c8de8d2-postgres",
+      "absent": true,
+      "inspectExitCode": 1,
+      "inspectError": "error: no such object: pytitect-9b714f00628e4270a398410e6c8de8d2-postgres"
+    },
+    {
+      "name": "pytitect-9b714f00628e4270a398410e6c8de8d2-nats",
+      "absent": true,
+      "inspectExitCode": 1,
+      "inspectError": "error: no such object: pytitect-9b714f00628e4270a398410e6c8de8d2-nats"
+    },
+    {
+      "name": "pytitect-9b714f00628e4270a398410e6c8de8d2-localstack",
+      "absent": true,
+      "inspectExitCode": 1,
+      "inspectError": "error: no such object: pytitect-9b714f00628e4270a398410e6c8de8d2-localstack"
+    },
+    {
+      "name": "pytitect-ffab65622f8e44da9a5dacf0922445a4-postgres",
+      "absent": true,
+      "inspectExitCode": 1,
+      "inspectError": "error: no such object: pytitect-ffab65622f8e44da9a5dacf0922445a4-postgres"
+    },
+    {
+      "name": "pytitect-ffab65622f8e44da9a5dacf0922445a4-nats",
+      "absent": true,
+      "inspectExitCode": 1,
+      "inspectError": "error: no such object: pytitect-ffab65622f8e44da9a5dacf0922445a4-nats"
+    },
+    {
+      "name": "pytitect-ffab65622f8e44da9a5dacf0922445a4-localstack",
+      "absent": true,
+      "inspectExitCode": 1,
+      "inspectError": "error: no such object: pytitect-ffab65622f8e44da9a5dacf0922445a4-localstack"
+    }
+  ],
+  "observedProcesses": [
+    {
+      "pid": 388661,
+      "absent": true
+    },
+    {
+      "pid": 393510,
+      "absent": true
+    }
+  ],
+  "passed": true
+}

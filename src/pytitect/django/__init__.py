@@ -19,6 +19,7 @@ from pytitect.django.maintenance import (
     RetentionIndexModels,
     build_retention_index_check,
 )
+from pytitect.django.relay import DjangoRelayStore
 from pytitect.django.stores import (
     DjangoCheckpointStore,
     DjangoGenerationStore,
@@ -53,6 +54,7 @@ __all__ = [
     "DjangoMutationBatchStore",
     "DjangoOutboxStore",
     "DjangoReceiptStore",
+    "DjangoRelayStore",
     "DjangoReplayStore",
     "DjangoRetentionMaintenance",
     "DjangoTransactionBoundary",

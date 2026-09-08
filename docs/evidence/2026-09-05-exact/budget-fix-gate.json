@@ -1,0 +1,17 @@
+{
+  "command": "uv run python tool/verify.py",
+  "sourceSha": "d964ad5f152f9403aa1d30fffc23d93bdb1ef370",
+  "sourceCleanAfter": true,
+  "status": "passed",
+  "python": "3.14.4",
+  "testsPassed": 383,
+  "manualAwsDeselected": 1,
+  "isolatedWheelInstallations": 16,
+  "coveragePercent": {
+    "global": 89.0,
+    "coreHttpContracts": 91.35,
+    "riskParsers": 96.9,
+    "criticalEventPlatform": 95.74
+  },
+  "logSha256": "4a9800b11fe5284c6067cced75f64836687f09899264b6244b0328c644569871"
+}

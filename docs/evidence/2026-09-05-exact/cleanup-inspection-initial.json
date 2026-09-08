@@ -1,0 +1,52 @@
+{
+  "scope": "Only locally created verification/capacity containers and observed driver/soak processes",
+  "containers": [
+    {
+      "name": "pytitect-c7bf9c67bf664d6b88cc97c8d31a5f46-postgres",
+      "absent": false
+    },
+    {
+      "name": "pytitect-c7bf9c67bf664d6b88cc97c8d31a5f46-nats",
+      "absent": false
+    },
+    {
+      "name": "pytitect-c7bf9c67bf664d6b88cc97c8d31a5f46-localstack",
+      "absent": false
+    },
+    {
+      "name": "pytitect-58a926a109fd49b9987aa2dbdf5fb5e6-postgres",
+      "absent": false
+    },
+    {
+      "name": "pytitect-732b1ce2d4584dc6852d49d56779463e-postgres",
+      "absent": false
+    },
+    {
+      "name": "pytitect-d11c70454bcf42d1a4832be00d9c5d8e-postgres",
+      "absent": false
+    },
+    {
+      "name": "pytitect-827d4b1a0e15446697c3bc3eac30785f-postgres",
+      "absent": false
+    },
+    {
+      "name": "pytitect-827d4b1a0e15446697c3bc3eac30785f-nats",
+      "absent": false
+    },
+    {
+      "name": "pytitect-827d4b1a0e15446697c3bc3eac30785f-localstack",
+      "absent": false
+    }
+  ],
+  "observedProcesses": [
+    {
+      "pid": 388661,
+      "absent": true
+    },
+    {
+      "pid": 393510,
+      "absent": true
+    }
+  ],
+  "passed": false
+}

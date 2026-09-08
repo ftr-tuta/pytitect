@@ -45,3 +45,9 @@ normally requires its local database but not a live broker because commands comm
 Relay and consumer roles normally require the broker. A consumer-selected finite backlog limit may
 make any role unready. During shutdown, stop intake, wait for admitted work for a finite grace period,
 and then cancel remaining tasks; cancellation must propagate.
+
+See [independent reliability foundations](reliability-foundations.md) for current async adoption,
+implemented store inventory, live conformance and reproducible Python capacity validation.
+
+See [exact wire boundaries and explicit profile adoption](exact-wire.md) for Preview `/2`, legacy
+binary64 compatibility, bounded raw input, and negotiated page integrity.

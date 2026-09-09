@@ -375,6 +375,7 @@ jobs:
               raise SystemExit("Dart candidate must be a full committed SHA")
           target = Path(os.environ["RUNNER_TEMP"]) / "dartitect-candidate"
           subprocess.run(["git", "clone", "--no-checkout", "https://github.com/ftr-tuta/dartitect.git", str(target)], check=True)
+          subprocess.run(["git", "-C", str(target), "fetch", "--no-tags", "origin", revision], check=True)
           subprocess.run(["git", "-C", str(target), "checkout", "--detach", revision], check=True)
           with open(os.environ["GITHUB_ENV"], "a") as output:
               output.write(f"DART_CANDIDATE_ROOT={target}\nDART_CANDIDATE_SHA={revision}\n")

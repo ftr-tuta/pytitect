@@ -8,6 +8,10 @@ A fresh Python-owned candidate reference names the actual committed Python head 
 Dart pin. It is not an acceptance manifest. Never remove the paired job from `CI / Required` to
 merge a candidate.
 
+CI fetches the exact committed Dart pin explicitly before checkout. A normal clone may omit that
+historical candidate after the upstream PR is squash-merged and its branch is deleted. Fetching
+the immutable SHA preserves the pin and the existing clean-source checks.
+
 Python executes `python -m tool.paired_gate --dart-root <clean checkout> --dart-sha <pin>
 --mode candidate --output <new directory>` with real `TEST_POSTGRES_DSN`, `TEST_NATS_URL` and
 `CHROME_EXECUTABLE`. Reusing an evidence directory fails, preserving previous failed reports.

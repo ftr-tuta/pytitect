@@ -46,7 +46,7 @@ security = [
 ]
 sync = ["rfc8785>=0.1.4,<1", "cryptography>=46,<51"]
 sqlalchemy = [
-  "SQLAlchemy[asyncio]>=2.0.52,<2.1",
+  "SQLAlchemy[asyncio]>=2.0.52,<2.2",
   "psycopg[binary,pool]>=3.3.5,<4",
 ]
 nats = ["nats-py>=2.15,<3"]

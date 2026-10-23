@@ -178,7 +178,7 @@ dependencies = [
     "drf-spectacular==0.30.0",
     "gunicorn==26.2.0",
     "hiredis==3.4.1",
-    "pillow==12.3.0",
+    "pillow==13.0.0",
     "psycopg[binary]==3.3.4",
     "python-slugify==8.0.4",
     "redis==8.1.0",
